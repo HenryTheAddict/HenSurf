@@ -1,0 +1,83 @@
+diff --git a/chrome/app/chrome_main_delegate.cc b/chrome/app/chrome_main_delegate.cc
+index 1234567..abcdefg 100644
+--- a/chrome/app/chrome_main_delegate.cc
++++ b/chrome/app/chrome_main_delegate.cc
+@@ -50,6 +50,7 @@
+ #include "chrome/common/chrome_switches.h"
+ #include "chrome/common/crash_keys.h"
+ #include "chrome/common/logging_chrome.h"
++#include "chrome/common/hensurf_branding.h"
+ #include "chrome/common/profiler/main_thread_stack_sampling_profiler.h"
+ #include "chrome/grit/generated_resources.h"
+ #include "chrome/installer/util/google_update_settings.h"
+diff --git a/chrome/common/hensurf_branding.h b/chrome/common/hensurf_branding.h
+new file mode 100644
+index 0000000..1234567
+--- /dev/null
++++ b/chrome/common/hensurf_branding.h
+@@ -0,0 +1,20 @@
++// Copyright 2025 HenSurf. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_COMMON_HENSURF_BRANDING_H_
++#define CHROME_COMMON_HENSURF_BRANDING_H_
++
++// HenSurf branding constants
++#define HENSURF_PRODUCT_NAME "HenSurf Browser"
++#define HENSURF_PRODUCT_SHORT_NAME "HenSurf"
++#define HENSURF_COMPANY_NAME "HenSurf"
++#define HENSURF_COPYRIGHT "Copyright 2025 HenSurf. All rights reserved."
++#define HENSURF_VERSION_MAJOR 1
++#define HENSURF_VERSION_MINOR 0
++#define HENSURF_VERSION_BUILD 0
++#define HENSURF_VERSION_PATCH 0
++#define HENSURF_USER_AGENT_PRODUCT "HenSurf"
++#define HENSURF_DEFAULT_SEARCH_URL "https://duckduckgo.com/?q={searchTerms}"
++
++#endif  // CHROME_COMMON_HENSURF_BRANDING_H_
+diff --git a/chrome/app/theme/chromium/BRANDING b/chrome/app/theme/chromium/BRANDING
+index 1234567..abcdefg 100644
+--- a/chrome/app/theme/chromium/BRANDING
++++ b/chrome/app/theme/chromium/BRANDING
+@@ -1,8 +1,8 @@
+-COMPANY_FULLNAME=The Chromium Authors
+-COMPANY_SHORTNAME=Chromium
+-PRODUCT_FULLNAME=Chromium
+-PRODUCT_SHORTNAME=Chromium
+-PRODUCT_INSTALLER_FULLNAME=Chromium
+-COPYRIGHT=Copyright $YEAR The Chromium Authors. All rights reserved.
++COMPANY_FULLNAME=HenSurf
++COMPANY_SHORTNAME=HenSurf
++PRODUCT_FULLNAME=HenSurf Browser
++PRODUCT_SHORTNAME=HenSurf
++PRODUCT_INSTALLER_FULLNAME=HenSurf Browser Installer
++COPYRIGHT=Copyright 2025 HenSurf. All rights reserved.
+ OFFICIAL_BUILD=1
+-MAC_BUNDLE_ID=org.chromium.Chromium
++MAC_BUNDLE_ID=xyz.h3nry.hensurf
+diff --git a/chrome/browser/ui/startup/startup_browser_creator_impl.cc b/chrome/browser/ui/startup/startup_browser_creator_impl.cc
+index 1234567..abcdefg 100644
+--- a/chrome/browser/ui/startup/startup_browser_creator_impl.cc
++++ b/chrome/browser/ui/startup/startup_browser_creator_impl.cc
+@@ -45,6 +45,7 @@
+ #include "chrome/common/chrome_switches.h"
+ #include "chrome/common/pref_names.h"
+ #include "chrome/common/url_constants.h"
++#include "chrome/common/hensurf_branding.h"
+ #include "chrome/grit/chromium_strings.h"
+ #include "chrome/grit/generated_resources.h"
+ #include "chrome/grit/locale_settings.h"
+@@ -200,7 +201,7 @@ void StartupBrowserCreatorImpl::AddInfoBarsIfNecessary(
+   // Show the default browser info bar if it hasn't been shown before.
+   if (ShouldShowDefaultBrowserPrompt(profile)) {
+     chrome::ShowDefaultBrowserPrompt(profile);
+-    content::GetUIThreadTaskRunner({})->PostDelayedTask(
++    // HenSurf: Disable default browser prompt
++    // content::GetUIThreadTaskRunner({})->PostDelayedTask(
+         FROM_HERE,
+         base::BindOnce(&StartupBrowserCreatorImpl::ShowDefaultBrowserPrompt,
+                        weak_factory_.GetWeakPtr(), profile),
+         base::Seconds(kDefaultBrowserPromptDelaySeconds));
+   }
+ }

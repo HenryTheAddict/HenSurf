@@ -1,0 +1,196 @@
+# HenSurf Patch: Remove Bloatware and Promotional Content
+# This patch removes promotional content, welcome screens, and unnecessary features
+
+--- a/chrome/browser/ui/webui/welcome/welcome_ui.cc
++++ b/chrome/browser/ui/webui/welcome/welcome_ui.cc
+@@ -1,6 +1,8 @@
+ // Copyright 2018 The Chromium Authors. All rights reserved.
+ // Use of this source code is governed by a BSD-style license that can be
+ // found in the LICENSE file.
++
++#if 0  // HenSurf: Disable welcome screen
+ 
+ #include "chrome/browser/ui/webui/welcome/welcome_ui.h"
+ 
+@@ -50,3 +52,4 @@ WelcomeUI::~WelcomeUI() = default;
+ 
+ }  // namespace welcome
+ 
++#endif  // HenSurf: Disable welcome screen
+
+--- a/chrome/browser/ui/webui/ntp/new_tab_ui.cc
++++ b/chrome/browser/ui/webui/ntp/new_tab_ui.cc
+@@ -100,8 +100,10 @@ void NewTabUI::InitializeCSS() {
+   // Add CSS for promotional content
+   source->AddResourcePath("promo.css", IDR_NEW_TAB_PROMO_CSS);
+ 
++#if 0  // HenSurf: Remove promotional content
+   // Add promotional JavaScript
+   source->AddResourcePath("promo.js", IDR_NEW_TAB_PROMO_JS);
++#endif
+ }
+ 
+ void NewTabUI::InitializeJS() {
+@@ -120,8 +122,10 @@ void NewTabUI::InitializeJS() {
+   source->AddResourcePath("most_visited.js", IDR_NEW_TAB_MOST_VISITED_JS);
+   source->AddResourcePath("recently_closed.js", IDR_NEW_TAB_RECENTLY_CLOSED_JS);
+ 
++#if 0  // HenSurf: Remove Google services integration
+   // Google services integration
+   source->AddResourcePath("google_services.js", IDR_NEW_TAB_GOOGLE_SERVICES_JS);
++#endif
+ }
+
+--- a/chrome/browser/prefs/browser_prefs.cc
++++ b/chrome/browser/prefs/browser_prefs.cc
+@@ -500,10 +500,12 @@ void RegisterBrowserPrefs(PrefRegistrySimple* registry) {
+   registry->RegisterBooleanPref(prefs::kEnableDoNotTrack, false);
+   registry->RegisterBooleanPref(prefs::kEnableReferrers, true);
+ 
++#if 0  // HenSurf: Disable promotional features
+   // Promotional content preferences
+   registry->RegisterBooleanPref(prefs::kPromotionalTabsEnabled, true);
+   registry->RegisterBooleanPref(prefs::kShowPromotion, true);
+   registry->RegisterIntegerPref(prefs::kPromotionImpressionCount, 0);
++#endif
+ 
+   // Privacy preferences - HenSurf defaults
+   registry->RegisterBooleanPref(prefs::kBlockThirdPartyCookies, true);
+@@ -520,8 +522,10 @@ void RegisterBrowserPrefs(PrefRegistrySimple* registry) {
+   registry->RegisterBooleanPref(prefs::kSafeBrowsingEnabled, false);
+   registry->RegisterBooleanPref(prefs::kSafeBrowsingExtendedReportingEnabled, false);
+ 
++#if 0  // HenSurf: Disable Google services
+   // Google services preferences
+   registry->RegisterBooleanPref(prefs::kGoogleServicesAccountId, "");
++#endif
+ }
+
+--- a/chrome/browser/ui/toolbar/app_menu_model.cc
++++ b/chrome/browser/ui/toolbar/app_menu_model.cc
+@@ -200,6 +200,7 @@ void AppMenuModel::Build() {
+   AddSeparator(ui::NORMAL_SEPARATOR);
+   AddItemWithStringId(IDC_HELP_PAGE, IDS_HELP_PAGE);
+ 
++#if 0  // HenSurf: Remove promotional menu items
+   if (base::FeatureList::IsEnabled(features::kShowPromotionalContent)) {
+     AddSeparator(ui::NORMAL_SEPARATOR);
+     AddItemWithStringId(IDC_SHOW_CHROME_TIPS, IDS_SHOW_CHROME_TIPS);
+@@ -207,6 +208,7 @@ void AppMenuModel::Build() {
+     AddItemWithStringId(IDC_CHROME_WHATS_NEW, IDS_CHROME_WHATS_NEW);
+     AddItemWithStringId(IDC_CHROME_TIPS, IDS_CHROME_TIPS);
+   }
++#endif
+ 
+   AddItemWithStringId(IDC_ABOUT, IDS_ABOUT);
+ }
+
+--- a/chrome/browser/ui/startup/startup_browser_creator_impl.cc
++++ b/chrome/browser/ui/startup/startup_browser_creator_impl.cc
+@@ -500,6 +500,7 @@ void StartupBrowserCreatorImpl::AddInfoBarsIfNecessary(
+     return;
+   }
+ 
++#if 0  // HenSurf: Disable promotional info bars
+   // Show promotional content
+   if (ShouldShowPromotionalContent()) {
+     ShowPromotionalInfoBar(browser);
+@@ -509,6 +510,7 @@ void StartupBrowserCreatorImpl::AddInfoBarsIfNecessary(
+   if (ShouldShowGoogleServicesPromo()) {
+     ShowGoogleServicesInfoBar(browser);
+   }
++#endif
+ }
+ 
+ bool StartupBrowserCreatorImpl::ShouldShowWelcomeScreen() {
+@@ -520,7 +522,7 @@ bool StartupBrowserCreatorImpl::ShouldShowWelcomeScreen() {
+     return false;
+   }
+ 
+-  return !profile_->GetPrefs()->GetBoolean(prefs::kHasSeenWelcomeScreen);
++  return false;  // HenSurf: Never show welcome screen
+ }
+
+--- a/chrome/browser/extensions/extension_service.cc
++++ b/chrome/browser/extensions/extension_service.cc
+@@ -1000,6 +1000,7 @@ void ExtensionService::OnExtensionInstalled(
+     NotifyExtensionLoaded(extension);
+   }
+ 
++#if 0  // HenSurf: Disable automatic extension promotions
+   // Check if we should show extension promotion
+   if (ShouldPromoteExtension(extension)) {
+     ShowExtensionPromotion(extension);
+@@ -1009,6 +1010,7 @@ void ExtensionService::OnExtensionInstalled(
+   if (IsGoogleExtension(extension)) {
+     RecordGoogleExtensionInstall();
+   }
++#endif
+ }
+
+--- a/chrome/browser/search/search.cc
++++ b/chrome/browser/search/search.cc
+@@ -100,7 +100,7 @@ bool IsInstantExtendedAPIEnabled() {
+ }
+ 
+ bool ShouldShowGoogleSearchPromotion() {
+-  return base::FeatureList::IsEnabled(features::kGoogleSearchPromotion);
++  return false;  // HenSurf: Disable Google search promotion
+ }
+ 
+ bool ShouldUseGoogleAsDefaultSearchProvider() {
+@@ -110,7 +110,7 @@ bool ShouldUseGoogleAsDefaultSearchProvider() {
+     return false;
+   }
+ 
+-  return true;
++  return false;  // HenSurf: Don't use Google as default
+ }
+
+--- a/chrome/browser/ui/webui/settings/site_settings_handler.cc
++++ b/chrome/browser/ui/webui/settings/site_settings_handler.cc
+@@ -200,8 +200,10 @@ void SiteSettingsHandler::HandleGetOriginPermissions(
+   permissions_list.Append(std::move(origin_permissions));
+ 
+   // Add promotional content for privacy settings
++#if 0  // HenSurf: Remove privacy settings promotion
+   if (ShouldShowPrivacyPromotion()) {
+     AddPrivacyPromotionContent(&permissions_list);
+   }
++#endif
+ 
+   ResolveJavascriptCallback(callback_id, permissions_list);
+ }
+
+--- a/components/omnibox/browser/omnibox_edit_model.cc
++++ b/components/omnibox/browser/omnibox_edit_model.cc
+@@ -500,6 +500,7 @@ void OmniboxEditModel::OnAfterPossibleChange(
+     return;
+   }
+ 
++#if 0  // HenSurf: Disable search suggestions
+   // Update search suggestions
+   if (ShouldUpdateSearchSuggestions()) {
+     UpdateSearchSuggestions();
+@@ -509,6 +510,7 @@ void OmniboxEditModel::OnAfterPossibleChange(
+   if (ShouldShowGoogleSuggestions()) {
+     ShowGoogleSuggestions();
+   }
++#endif
+ }
+
+--- a/chrome/browser/ui/webui/chrome_web_ui_controller_factory.cc
++++ b/chrome/browser/ui/webui/chrome_web_ui_controller_factory.cc
+@@ -300,10 +300,12 @@ WebUIController* ChromeWebUIControllerFactory::CreateWebUIControllerForURL(
+     return &NewTabUI::GetInstance();
+   }
+ 
++#if 0  // HenSurf: Disable welcome and promotional pages
+   if (url.host() == chrome::kChromeUIWelcomeHost) {
+     return &WelcomeUI::GetInstance();
+   }
+ 
+   if (url.host() == chrome::kChromeUIWhatsNewHost) {
+     return &WhatsNewUI::GetInstance();
+   }
++#endif

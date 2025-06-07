@@ -1,0 +1,42 @@
+{
+  "icons": {
+    "16": {
+      "file": "icon_16.png",
+      "size": "16x16",
+      "purpose": "favicon, tab icon"
+    },
+    "32": {
+      "file": "icon_32.png",
+      "size": "32x32",
+      "purpose": "favicon, small toolbar icon"
+    },
+    "48": {
+      "file": "icon_48.png",
+      "size": "48x48",
+      "purpose": "extension icon, medium toolbar icon"
+    },
+    "64": {
+      "file": "icon_64.png",
+      "size": "64x64",
+      "purpose": "large toolbar icon"
+    },
+    "128": {
+      "file": "icon_128.png",
+      "size": "128x128",
+      "purpose": "app icon, installer icon"
+    },
+    "256": {
+      "file": "icon_256.png",
+      "size": "256x256",
+      "purpose": "high-res app icon"
+    },
+    "512": {
+      "file": "icon_512.png",
+      "size": "512x512",
+      "purpose": "retina app icon, splash screen"
+    }
+  },
+  "source": "../Hensurf.png",
+  "brand": "HenSurf Browser",
+  "description": "Icon set for HenSurf Browser - Privacy-focused Chromium-based browser"
+}

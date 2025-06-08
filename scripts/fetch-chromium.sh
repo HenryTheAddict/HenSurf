@@ -15,41 +15,20 @@ source "$SCRIPT_DIR/utils.sh" # utils.sh provides logging and safe_cd functions
 
 log_info "🌐 Fetching Chromium source code for HenSurf..."
 
-
-# depot_tools path logic:
-# 1. Check DEPOT_TOOLS_PATH environment variable
-# 2. Fallback to common locations ($PROJECT_ROOT/../depot_tools or $PROJECT_ROOT/depot_tools)
-
+# Find depot_tools using the utility function
 DEPOT_TOOLS_DIR=""
-if [ -n "$DEPOT_TOOLS_PATH" ] && [ -d "$DEPOT_TOOLS_PATH" ]; then
-    DEPOT_TOOLS_DIR=$(cd "$DEPOT_TOOLS_PATH" &>/dev/null && pwd) # Get absolute path
-    log_info "ℹ️ Using depot_tools from DEPOT_TOOLS_PATH environment variable: $DEPOT_TOOLS_DIR"
-else
-    # Try to find depot_tools, assuming it's adjacent to the project root
-    DEPOT_TOOLS_DIR_GUESS_1="$PROJECT_ROOT/../depot_tools"
-    # Fallback if it's inside the project root
-    DEPOT_TOOLS_DIR_GUESS_2="$PROJECT_ROOT/depot_tools"
-
-    if [ -d "$DEPOT_TOOLS_DIR_GUESS_1" ]; then
-        DEPOT_TOOLS_DIR=$(cd "$DEPOT_TOOLS_DIR_GUESS_1" &>/dev/null && pwd)
-        log_info "ℹ️ Using depot_tools from default location (adjacent to project): $DEPOT_TOOLS_DIR"
-    elif [ -d "$DEPOT_TOOLS_DIR_GUESS_2" ]; then
-        DEPOT_TOOLS_DIR=$(cd "$DEPOT_TOOLS_DIR_GUESS_2" &>/dev/null && pwd)
-        log_info "ℹ️ Using depot_tools from fallback location (inside project): $DEPOT_TOOLS_DIR"
-    else
-        log_error "❌ depot_tools not found."
-        log_error "   Checked DEPOT_TOOLS_PATH environment variable (was not set or invalid)."
-        log_error "   Checked default location: $DEPOT_TOOLS_DIR_GUESS_1"
-        log_error "   Checked fallback location: $DEPOT_TOOLS_DIR_GUESS_2"
-        log_error "   Please ensure depot_tools is correctly installed and accessible,"
-        log_error "   or set the DEPOT_TOOLS_PATH environment variable to its location."
-        log_error "   Consider running ./scripts/install-deps.sh first if depot_tools is not yet installed."
-        exit 1
-    fi
+if ! DEPOT_TOOLS_DIR=$(find_depot_tools_path "$PROJECT_ROOT"); then
+    # Error messages are handled by find_depot_tools_path
+    log_error "   Consider running ./scripts/install-deps.sh first if depot_tools is not yet installed."
+    exit 1
 fi
 
-export PATH="$DEPOT_TOOLS_DIR:$PATH"
-log_info "🔧 Added depot_tools to PATH for this session."
+# Add depot_tools to PATH (find_depot_tools_path already logs the path found)
+if ! add_depot_tools_to_path "$DEPOT_TOOLS_DIR"; then
+    log_error "Failed to add depot_tools to PATH. Exiting."
+    exit 1
+fi
+# No need for separate log_info for adding to path, add_depot_tools_to_path handles it.
 
 # Check available disk space
 MIN_DISK_SPACE_GB=100 # Minimum recommended disk space in GB
@@ -127,7 +106,12 @@ if [ -f "$TARGET_CHROMIUM_DIR_NAME/.gclient" ] || [ -d "$TARGET_CHROMIUM_DIR_NAM
     log_info "Chromium checkout already detected at $TARGET_CHROMIUM_DIR_NAME."
     safe_cd "$TARGET_CHROMIUM_DIR_NAME"
     log_info "🔄 Updating existing Chromium source via 'gclient sync' in $(pwd)..."
-    gclient sync
+    gclient sync; local GCLIENT_SYNC_STATUS=$?
+    if [ "$GCLIENT_SYNC_STATUS" -ne 0 ]; then
+        log_error "Error: 'gclient sync' failed with status $GCLIENT_SYNC_STATUS in $(pwd)."
+        log_error "Please check the output above for specific error messages from gclient."
+        exit 1
+    fi
     # cd back to parent for consistency before enhanced sync prompt
     safe_cd "$CHROMIUM_PARENT_DIR"
 else
@@ -136,6 +120,19 @@ else
     log_info "⏳ Expected time: 30-60 minutes or more depending on internet speed and machine specs."
     
     fetch --nohooks chromium # Creates './src' (e.g. $PROJECT_ROOT/src/src)
+    local FETCH_STATUS=$?
+
+    if [ "$FETCH_STATUS" -ne 0 ]; then
+        log_error "Error: 'fetch --nohooks chromium' command failed with status $FETCH_STATUS."
+        log_error "This could be due to network issues, incorrect 'fetch' command setup, or other problems during the Chromium source download."
+        exit 1
+    fi
+
+    if [ ! -d "$FETCH_CREATED_DIR_NAME" ]; then
+        log_error "Error: 'fetch --nohooks chromium' completed, but the expected directory '$FETCH_CREATED_DIR_NAME' was not created in $(pwd)."
+        log_error "This could be due to an issue with the fetch process, network problems, or insufficient permissions."
+        exit 1
+    fi
     
     # Rename the fetched 'src' directory to 'chromium'
     if [ -d "$FETCH_CREATED_DIR_NAME" ]; then
@@ -160,7 +157,12 @@ else
     #     log_error "❌ 'src' directory not found in $(pwd) after fetch. This is unexpected."
     #     exit 1
     # fi
-    gclient runhooks
+    gclient runhooks; local GCLIENT_RUNHOOKS_STATUS=$?
+    if [ "$GCLIENT_RUNHOOKS_STATUS" -ne 0 ]; then
+        log_error "Error: 'gclient runhooks' failed with status $GCLIENT_RUNHOOKS_STATUS in $(pwd)."
+        log_error "This often indicates issues with dependencies or hooks configuration. Check output above."
+        exit 1
+    fi
     # cd back to parent for consistency before enhanced sync prompt
     safe_cd "$CHROMIUM_PARENT_DIR"
 fi

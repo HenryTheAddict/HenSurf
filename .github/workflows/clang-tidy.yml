@@ -27,6 +27,17 @@ jobs:
       DEPOT_TOOLS_DIR: ${{ github.workspace }}/depot_tools
 
     steps:
+      - name: Free up runner disk space
+        run: |
+          set -e
+          echo "Initial disk space:"
+          df -h
+          sudo rm -rf /usr/share/dotnet /opt/ghc "/usr/local/share/boost" "$AGENT_TOOLSDIRECTORY" /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          sudo swapoff /swapfile || true
+          sudo rm -f /swapfile || true
+          sudo apt-get clean
+          echo "Disk space after cleanup:"
+          df -h
       - name: Checkout HenSurf repository
         uses: actions/checkout@v4
         with:
@@ -84,8 +95,67 @@ jobs:
       - name: Run gclient runhooks
         working-directory: ${{ github.workspace }}/chromium
         run: |
-          # This step downloads toolchains like Clang, including clang-tidy
-          gclient runhooks -j8
+          set -e
+          echo "Listing contents of ${{ github.workspace }}/chromium/src/buildtools/ BEFORE gclient runhooks:"
+          ls -la "${{ github.workspace }}/chromium/src/buildtools/" || echo "buildtools directory does not exist before runhooks or ls failed."
+
+          echo "Running gclient runhooks -j1 --verbose..."
+          gclient runhooks -j1 --verbose
+          GCLIENT_RUNHOOKS_EXIT_CODE=$?
+          echo "gclient runhooks completed with exit code: $GCLIENT_RUNHOOKS_EXIT_CODE"
+
+          if [ $GCLIENT_RUNHOOKS_EXIT_CODE -ne 0 ]; then
+            echo "❌ gclient runhooks failed with exit code $GCLIENT_RUNHOOKS_EXIT_CODE."
+            # Consider exiting here if runhooks must succeed for clang-tidy.
+            # exit $GCLIENT_RUNHOOKS_EXIT_CODE
+          fi
+
+          echo "Listing contents of ${{ github.workspace }}/chromium/src/buildtools/ AFTER gclient runhooks:"
+          ls -la "${{ github.workspace }}/chromium/src/buildtools/" || echo "buildtools directory does not exist after runhooks or ls failed."
+          echo "Listing contents of ${{ github.workspace }}/chromium/src/buildtools/linux64/ AFTER gclient runhooks:"
+          ls -la "${{ github.workspace }}/chromium/src/buildtools/linux64/" || echo "buildtools/linux64 directory does not exist after runhooks or ls failed."
+
+          # Verify gn executable exists
+          GN_EXECUTABLE="${{ github.workspace }}/chromium/src/buildtools/linux64/gn/gn"
+          EXPECTED_GN_PATH_README="${{ github.workspace }}/chromium/src/buildtools/README.md"
+
+          if [ -f "$GN_EXECUTABLE" ]; then
+            echo "✅ gn executable found at $GN_EXECUTABLE."
+          else
+            echo "⚠️ gn executable NOT found at $GN_EXECUTABLE after gclient runhooks."
+
+            if [ -f "$EXPECTED_GN_PATH_README" ]; then
+              echo "ℹ️ Found buildtools README: $EXPECTED_GN_PATH_README. buildtools downloaded some content."
+            else
+              echo "⚠️ Did not find buildtools README: $EXPECTED_GN_PATH_README. buildtools might be missing entirely."
+            fi
+
+            echo "Attempting to locate gn in depot_tools..."
+            DEPOT_TOOLS_GN_PATH="${{ env.DEPOT_TOOLS_DIR }}/gn"
+
+            if [ -f "$DEPOT_TOOLS_GN_PATH" ] && [ -x "$DEPOT_TOOLS_GN_PATH" ]; then
+              echo "Found gn in depot_tools at $DEPOT_TOOLS_GN_PATH."
+              TARGET_GN_DIR="${{ github.workspace }}/chromium/src/buildtools/linux64/gn"
+              echo "Creating directory $TARGET_GN_DIR (and parent dirs if necessary)..."
+              mkdir -p "$TARGET_GN_DIR"
+              echo "Copying gn from $DEPOT_TOOLS_GN_PATH to $TARGET_GN_DIR/gn..."
+              cp "$DEPOT_TOOLS_GN_PATH" "$TARGET_GN_DIR/gn"
+              if [ -f "$TARGET_GN_DIR/gn" ]; then
+                echo "✅ Successfully copied gn to $TARGET_GN_DIR/gn."
+                chmod +x "$TARGET_GN_DIR/gn"
+              else
+                echo "❌ Failed to copy gn from depot_tools to $TARGET_GN_DIR/gn."
+              fi
+            else
+              echo "❌ gn not found in depot_tools at $DEPOT_TOOLS_GN_PATH or it's not executable."
+            fi
+
+            # Crucial check: if gn is still not available, exit with an error.
+            if [ ! -f "$GN_EXECUTABLE" ]; then
+              echo "❌❌ CRITICAL: gn executable is NOT available at $GN_EXECUTABLE and could not be copied from depot_tools. Subsequent steps will likely fail."
+              exit 1 # Explicitly exit if gn is not found by this point.
+            fi
+          fi
 
       - name: Apply HenSurf patches
         working-directory: ${{ github.workspace }}/chromium/src # Patches apply to the synced Chromium source

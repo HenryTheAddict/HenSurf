@@ -219,6 +219,7 @@ fi
 HENSURF_ENABLE_BLOATWARE=0 # Default to disabled
 BUILD_CHROMEDRIVER=true
 BUILD_MINI_INSTALLER=true
+DEV_FAST_MODE=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -228,11 +229,17 @@ while [[ $# -gt 0 ]]; do
         --no-enable-bloatware) HENSURF_ENABLE_BLOATWARE=0; shift ;;
         --skip-chromedriver) BUILD_CHROMEDRIVER=false; shift ;;
         --skip-mini-installer) BUILD_MINI_INSTALLER=false; shift ;;
+        --dev-fast) DEV_FAST_MODE=true; shift ;;
         *) shift ;; # unknown option
     esac
 done
 
 GN_ARGS_LIST=()
+if [ "$DEV_FAST_MODE" = true ]; then
+    log_info "🚀 Developer Fast Mode enabled: is_component_build=true, treat_warnings_as_errors=false" | tee -a "$BUILD_LOG_FILE"
+    GN_ARGS_LIST+=("is_component_build=true")
+    GN_ARGS_LIST+=("treat_warnings_as_errors=false")
+fi
 if [[ -n "$GN_ARGS_EXTRA_OS" ]]; then
     GN_ARGS_LIST+=("$GN_ARGS_EXTRA_OS")
 fi

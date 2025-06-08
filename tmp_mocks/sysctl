@@ -1,9 +1,32 @@
 #!/bin/bash
-echo "Mock sysctl: Called with $*" >> /tmp/sysctl_calls.log
-if [[ "$*" == "-n hw.ncpu" ]]; then
-  echo "8"
-elif [[ "$*" == "-n hw.memsize" ]]; then
-  echo "17179869184" # 16GB
-else
-  echo "Mock sysctl: unhandled args $*"
+
+# A mock for the sysctl command to use in test environments.
+
+# Configuration
+readonly LOG_FILE="/tmp/sysctl_calls.log"
+
+# Log the invocation for debugging purposes.
+# The check ensures we don't create an empty log entry if no arguments are given.
+if [[ "$#" -gt 0 ]]; then
+  echo "Mock sysctl: Called with '$*'" >> "${LOG_FILE}"
 fi
+
+# Use a case statement for clarity and extensibility.
+case "$*" in
+  "-n hw.ncpu")
+    echo "8"
+    ;;
+  "-n hw.memsize")
+    echo "17179869184" # 16GB
+    ;;
+  "")
+    # Handle case where script is called with no arguments.
+    echo "Mock sysctl: Error: No arguments provided." >&2
+    exit 1
+    ;;
+  *)
+    # Handle any other un-mocked arguments.
+    echo "Mock sysctl: Unhandled arguments '$*'" >&2
+    exit 1
+    ;;
+esac

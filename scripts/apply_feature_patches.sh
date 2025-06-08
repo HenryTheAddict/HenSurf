@@ -49,7 +49,7 @@ GIT_APPLY_OPTS="--reject --ignore-whitespace --unidiff-zero"
 case "$ACTION" in
   apply)
     log_info "   Applying patch: $PATCH_FILE"
-    if git apply $GIT_APPLY_OPTS "$PATCH_FILE"; then
+    if git apply "$GIT_APPLY_OPTS" "$PATCH_FILE"; then
       log_success "✅ Patch '$PATCH_FILE' applied successfully."
     else
       log_error "❌ Error applying patch '$PATCH_FILE'."
@@ -60,7 +60,7 @@ case "$ACTION" in
     ;;
   unapply)
     log_info "   Unapplying patch: $PATCH_FILE"
-    if git apply --reverse $GIT_APPLY_OPTS "$PATCH_FILE"; then
+    if git apply --reverse "$GIT_APPLY_OPTS" "$PATCH_FILE"; then
       log_success "✅ Patch '$PATCH_FILE' unapplied successfully."
     else
       log_error "❌ Error unapplying patch '$PATCH_FILE'."

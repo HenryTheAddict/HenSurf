@@ -1,0 +1,25 @@
+// This file defines version strings for the Windows executable.
+// It includes chrome_version.rc.version for common fields and overrides others.
+#include "chrome/app/chrome_version.rc.version" // Provides defaults like FILE_VERSION, PRODUCT_VERSION
+
+// Override these for HenSurf branding
+#undef PRODUCT_FULLNAME_STRING
+#define PRODUCT_FULLNAME_STRING     "HenSurf Browser"
+#undef PRODUCT_SHORTNAME_STRING
+#define PRODUCT_SHORTNAME_STRING    "HenSurf"
+// It's also common to override COMPANY_FULLNAME_STRING and COMPANY_SHORTNAME_STRING
+#undef COMPANY_FULLNAME_STRING
+#define COMPANY_FULLNAME_STRING     "HenSurf Project" // Or your company
+#undef COMPANY_SHORTNAME_STRING
+#define COMPANY_SHORTNAME_STRING    "HenSurf"
+// Copyright string might also be company-specific
+#undef COPYRIGHT_STRING
+#define COPYRIGHT_STRING            "Copyright 2024 HenSurf Project. All rights reserved."
+// InternalName, OriginalFilename, and FileDescription are often overridden too for full branding.
+// For example:
+// #undef INTERNAL_NAME_STRING
+// #define INTERNAL_NAME_STRING        "hensurf.exe"
+// #undef ORIGINAL_FILENAME_STRING
+// #define ORIGINAL_FILENAME_STRING    "hensurf.exe"
+// #undef FILE_DESCRIPTION_STRING
+// #define FILE_DESCRIPTION_STRING     "HenSurf Browser"

@@ -1,10 +1,20 @@
 #!/bin/bash
 
+# HenSurf Browser - Interactive Build Script
+# This script provides an interactive menu for users to choose common
+# build targets for HenSurf, simplifying the process of setting
+# environment variables for build.sh.
+
+set -e
+
 # Source utility functions
 # shellcheck disable=SC1091
 source "$(dirname "$0")/utils.sh"
 
-# Function to determine native CPU architecture
+# Function to determine native CPU architecture for the current host.
+# This helps in defaulting the "Native OS" build option correctly.
+# Uses get_os_type from utils.sh.
+# Outputs: "x64", "arm64", or defaults to "x64".
 get_native_cpu_arch() {
   local os_type
   os_type=$(get_os_type)
@@ -64,25 +74,29 @@ perform_build() {
 }
 
 # Main script execution
-log_info "Interactive Build Script Started"
+log_info "🚀 HenSurf Interactive Build Script Started"
 
-# Get host OS
-HOST_OS=$(get_os_type)
-log_info "Detected Host OS: $HOST_OS"
+# Get host OS using the function from utils.sh
+HOST_OS=$(get_os_type) # This returns "macos", "linux", "windows", or "unknown"
+log_info "ℹ️ Detected Host OS: $HOST_OS"
 
-# Display menu
-echo ""
-log_action "Choose a build target:"
-echo "1. Native OS (autodetect architecture)"
-echo "2. Linux (x64)"
-echo "3. Windows (x64)"
-echo "4. macOS (Intel x64)"
-echo "5. macOS (ARM64)"
-echo "6. macOS (Both Intel x64 and ARM64)"
-echo "7. Exit"
-echo ""
+# Display menu using log_action for better visibility
+log_info "" # Blank line for spacing
+log_action "------------------------------------"
+log_action "  HenSurf Browser - Build Target Menu "
+log_action "------------------------------------"
+log_info "1. Native OS (autodetect architecture)"
+log_info "2. Linux (x64)"
+log_info "3. Windows (x64)"
+log_info "4. macOS (Intel x64)"
+log_info "5. macOS (ARM64)"
+log_info "6. macOS (Both Intel x64 and ARM64)"
+log_info "7. Exit"
+log_info "------------------------------------"
+log_info ""
 
 read -r -p "Enter your choice [1-7]: " choice
+echo # Add a newline after user input for cleaner logs
 
 case "$choice" in
   1)
@@ -124,17 +138,19 @@ case "$choice" in
     log_info "Selected: macOS (Both Intel x64 and ARM64)"
     NATIVE_MAC_ARCH=$(get_native_cpu_arch) # Check host macOS architecture
 
-    if [[ "$HOST_OS" != "mac" ]]; then
-      log_warning "Building for 'macOS Both' is intended to be run on a macOS host."
+    if [[ "$HOST_OS" != "mac" ]]; then # "mac" is the output of get_os_type for macOS
+      log_warn "Building for 'macOS Both' is primarily intended to be run on a macOS host for native ARM64/x64 builds."
+      log_warn "Cross-compiling might be possible but can be complex depending on setup."
       # Ask user if they want to proceed
       read -r -p "Proceed anyway? (yes/no): " proceed_choice
-      if [[ "$proceed_choice" != "yes" ]]; then
-        log_info "Exiting."
+      echo # Add a newline after user input
+      if [[ ! "$proceed_choice" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+        log_info "Exiting بناءً على اختيار المستخدم." # Using a non-ASCII char to test UTF-8 handling if it ever gets complex
         exit 0
       fi
     fi
 
-    log_info "Determining build order for macOS Both..."
+    log_info "ℹ️ Determining build order for macOS Both..."
     # Build native architecture first
     if [[ "$NATIVE_MAC_ARCH" == "arm64" ]]; then
       log_info "Host is ARM64. Building ARM64 first, then x64."
@@ -163,13 +179,13 @@ case "$choice" in
     fi
     ;;
   7)
-    log_info "Exiting."
+    log_info "👋 Exiting."
     ;;
   *)
-    log_error "Invalid choice: $choice. Please select a number between 1 and 7."
+    log_error "❌ Invalid choice: '$choice'. Please select a number between 1 and 7."
     exit 1
     ;;
 esac
 
-log_info "Interactive Build Script Finished"
-exit 0
+log_info "🏁 HenSurf Interactive Build Script Finished."
+exit 0 # Exit successfully if a build was attempted (perform_build handles its own exit on failure)

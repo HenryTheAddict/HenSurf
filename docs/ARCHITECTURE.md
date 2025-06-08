@@ -114,32 +114,47 @@ HenSurf tailors the Chromium build process using a special configuration file lo
 
 ### Patch System
 
-HenSurf makes direct changes to Chromium's original source code using a 'patch system'. Patches are files (stored in the `patches/` directory) that describe specific additions, removals, or modifications to the Chromium code. Think of them as precise, targeted edits. These patches are responsible for:
-- Modifying the browser's underlying C++ and other code to alter its behavior.
-- Removing visual elements from the user interface (UI), such as buttons or menus related to disabled features.
-- Changing default browser settings, like setting DuckDuckGo as the default search engine or enabling stricter privacy options from the start.
-- Applying HenSurf's unique branding, including its name, logos, and icons throughout the browser.
+HenSurf makes direct changes to Chromium's original source code using a 'patch system'. Patches are files (stored in the `patches/` directory) that describe specific additions, removals, or modifications to the Chromium code. These `.patch` files are applied using standard tools like `git apply`. They are responsible for:
+- Modifying the browser's underlying C++ and other code to alter its behavior (e.g., removing AI features, disabling Google services).
+- Removing visual elements from the user interface (UI) related to disabled features.
+- Changing default browser settings (e.g., search engine).
+
+Branding assets (icons, version information) are handled by a combination of patches (for integrating code changes like user agent) and dedicated scripts (`scripts/setup-logo.sh`) that place physical files into the source tree.
 
 ### Build Process
 
-1. **Dependency Installation** (`install-deps.sh`)
-   - Installs required build tools
-   - Sets up depot_tools
-   - Verifies system requirements
+The build process is orchestrated by a series of shell scripts:
 
-2. **Source Fetch** (`./scripts/fetch-chromium.sh`)
-   - Downloads the Chromium source code from Google's repositories.
-   - Applies initial Chromium-specific setup.
-   - Prepares the overall build environment.
+1.  **Dependency Installation (`scripts/install-deps.sh`)**:
+    *   Checks for and helps install essential build tools (Python, Git, Ninja, C++ compiler toolchain for the host OS).
+    *   Downloads and sets up `depot_tools`, Chromium's bootstrap toolset.
+    *   Verifies system requirements like disk space and RAM.
 
-3. **Patch Application** (`./scripts/apply-patches.sh`)
-   - Systematically applies HenSurf's custom patches (from the `patches/` directory) to the Chromium source code.
-   - This step integrates HenSurf's specific branding, default configurations, and feature removals.
+2.  **Source Fetch (`scripts/fetch-chromium.sh`)**:
+    *   Uses `depot_tools` (specifically `gclient` and `fetch`) to download the Chromium source code.
+    *   Runs initial `gclient runhooks` to download toolchains (like Clang) and other binary dependencies.
+    *   Offers an optional enhanced sync for full commit history.
 
-4. **Build Execution** (`./scripts/build.sh`)
-   - Compiles the modified Chromium source code to create the HenSurf browser application.
-   - Packages the compiled browser into an application bundle (e.g., `.app` for macOS).
-   - May also generate an installer if applicable for the operating system.
+3.  **Customization Application (`scripts/apply-patches.sh`)**:
+    *   Applies HenSurf's custom `.patch` files to the Chromium source code.
+    *   Creates or modifies C++ files for specific HenSurf behavior (e.g., `hensurf_version_info.cc` for user agent, `google_api_keys.cc` to disable keys).
+    *   Updates the `chrome/VERSION` file with HenSurf branding.
+    *   Calls `scripts/setup-logo.sh` to place all static branding assets (icons, `BRANDING` file, `chrome_exe.ver`).
+
+4.  **Compilation (`scripts/build.sh` or `scripts/interactive_build.sh`)**:
+    *   `interactive_build.sh` provides a user-friendly menu to select common build targets and then invokes `build.sh`.
+    *   `build.sh` is the core compilation script:
+        *   Sets up environment variables for target OS, CPU, and output directory (can be overridden by user).
+        *   Performs host system checks (RAM, disk space).
+        *   Constructs GN arguments based on feature flags and target configuration.
+        *   Runs `gn gen` to generate Ninja build files.
+        *   Runs `autoninja` to compile the browser and additional components (like `chromedriver`, `mini_installer`).
+        *   Handles macOS application bundle creation (`HenSurf.app`) if applicable.
+
+5.  **Testing (Optional, via `scripts/run_all_tests.py` or individual test scripts)**:
+    *   `run_all_tests.py` can orchestrate custom tests (`test-hensurf.sh`/`.ps1`) and standard Chromium tests (e.g., `browser_tests`, `unit_tests`).
+
+This structured process ensures that all modifications and branding are correctly applied before the final browser is compiled.
 
 ## Security Considerations
 

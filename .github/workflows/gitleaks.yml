@@ -6,9 +6,18 @@ on:
   pull_request:
     branches: [ main ]
 
+# Cancel in-progress runs for the same workflow and ref
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   scan_for_secrets:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read          # To checkout the repository
+      security-events: write  # To allow Gitleaks to potentially report findings as security events or checks
+      # Add other permissions if the specific gitleaks action version requires them for reporting.
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

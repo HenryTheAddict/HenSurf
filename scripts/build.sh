@@ -14,580 +14,646 @@ source "$SCRIPT_DIR_BUILD/utils.sh"
 PROJECT_ROOT=$(cd "$SCRIPT_DIR_BUILD/.." &>/dev/null && pwd)
 CHROMIUM_SRC_DIR="$PROJECT_ROOT/chromium/src"
 
-# --- Environment Variable Handling & Default Values ---
-HOST_OS_TYPE=$(get_os_type) # Used for native defaults
+# --- Global Variables ---
+# These variables are used throughout the script. Many are set by `setup_environment_variables` or `check_system_requirements`.
 
-# Determine FINAL_TARGET_OS
-if [ -z "$HENSURF_TARGET_OS" ]; then
-    FINAL_TARGET_OS="$HOST_OS_TYPE"
-    log_info "HENSURF_TARGET_OS not set, defaulting to native OS: $FINAL_TARGET_OS"
-else
-    FINAL_TARGET_OS="$HENSURF_TARGET_OS"
-    log_info "Using HENSURF_TARGET_OS: $FINAL_TARGET_OS"
-fi
+FINAL_TARGET_OS=""            # Target OS for the build (e.g., "linux", "mac", "win"). Set by setup_environment_variables.
+FINAL_TARGET_CPU=""           # Target CPU architecture (e.g., "x64", "arm64"). Set by setup_environment_variables.
+FINAL_OUTPUT_DIR=""           # Relative path from $CHROMIUM_SRC_DIR for build artifacts (e.g., "out/HenSurf-linux-x64"). Set by setup_environment_variables.
+BUILD_LOG_FILE=""             # Full path to the build log file. Set by setup_environment_variables.
+HOST_OS_TYPE=""               # OS type of the machine running the script (e.g., "ubuntu", "macos", specific distro if Linux). Set by setup_environment_variables.
+MEMORY_GB=0                   # Detected host memory in GB. Set by check_system_requirements.
+CPU_CORES=1                   # Detected host CPU cores. Set by check_system_requirements.
+GN_ARGS_STRING_WITH_TARGETS="" # String containing all GN arguments. Set by configure_gn_arguments.
 
-# Determine FINAL_TARGET_CPU
-if [ -z "$HENSURF_TARGET_CPU" ]; then
-    NATIVE_CPU_ARCH=""
-    if [[ "$HOST_OS_TYPE" == "mac" ]]; then
-        _UNAME_M_OUTPUT=$(uname -m)
-        if [[ "$_UNAME_M_OUTPUT" == "x86_64" ]]; then
-            NATIVE_CPU_ARCH="x64"
-        elif [[ "$_UNAME_M_OUTPUT" == "arm64" ]]; then
-            NATIVE_CPU_ARCH="arm64"
-        else
-            log_warn "Unknown macOS arch from uname -m: $_UNAME_M_OUTPUT. Defaulting to x64."
-            NATIVE_CPU_ARCH="x64" # Default for unknown Mac arch
-        fi
-    elif [[ "$HOST_OS_TYPE" == "linux" ]]; then
-        _UNAME_M_OUTPUT=$(uname -m)
-        if [[ "$_UNAME_M_OUTPUT" == "x86_64" ]]; then NATIVE_CPU_ARCH="x64";
-        elif [[ "$_UNAME_M_OUTPUT" == "aarch64" ]]; then NATIVE_CPU_ARCH="arm64";
-        elif [[ "$_UNAME_M_OUTPUT" == "armv7l" ]]; then NATIVE_CPU_ARCH="arm"; # example for 32-bit arm
-        else NATIVE_CPU_ARCH="x64"; log_warn "Unknown Linux arch: $_UNAME_M_OUTPUT. Defaulting to x64."; fi
-    elif [[ "$HOST_OS_TYPE" == "win" ]]; then
-        if [[ "$PROCESSOR_ARCHITECTURE" == "AMD64" ]] || [[ "$PROCESSOR_ARCHITECTURE" == "EM64T" ]]; then NATIVE_CPU_ARCH="x64";
-        elif [[ "$PROCESSOR_ARCHITECTURE" == "ARM64" ]]; then NATIVE_CPU_ARCH="arm64";
-        # Add more Windows arch checks if necessary, e.g. x86
-        else NATIVE_CPU_ARCH="x64"; log_warn "Unknown Windows arch: $PROCESSOR_ARCHITECTURE. Defaulting to x64."; fi
+# --- Feature Flags ---
+# These can be overridden by command-line arguments parsed in `configure_gn_arguments`.
+HENSURF_ENABLE_BLOATWARE=0 # Default to disabled. Controls 'hensurf_enable_bloatware' GN arg.
+BUILD_CHROMEDRIVER=true    # Whether to build chromedriver.
+BUILD_MINI_INSTALLER=true  # Whether to build mini_installer.
+DEV_FAST_MODE=false        # Enables developer-centric fast build options (e.g., component build, no warnings as errors).
+
+
+# --- Function Definitions ---
+
+# Sets up critical environment variables:
+# - FINAL_TARGET_OS: Target OS for the build (e.g., "mac", "linux", "win" for GN).
+# - FINAL_TARGET_CPU: Target CPU architecture (e.g., "x64", "arm64").
+# - FINAL_OUTPUT_DIR: Output directory for build artifacts.
+# - BUILD_LOG_FILE: Path to the build log.
+# - HOST_OS_TYPE: OS of the machine running the script (used for host-specific checks).
+# Reads HENSURF_TARGET_OS, HENSURF_TARGET_CPU, HENSURF_OUTPUT_DIR environment variables if set,
+# otherwise determines sensible defaults based on the host system.
+# Globals modified: FINAL_TARGET_OS, FINAL_TARGET_CPU, FINAL_OUTPUT_DIR, BUILD_LOG_FILE, HOST_OS_TYPE.
+setup_environment_variables() {
+    log_info "--- Setting up Environment Variables ---"
+    # Get host OS using utils.sh for host-side checks (e.g., PlistBuddy availability).
+    # get_os_distro provides specific distro, _get_os_type_internal provides general type.
+    HOST_OS_TYPE=$(get_os_distro) # From utils.sh; e.g., "ubuntu", "fedora", "macos", "windows"
+    local native_os_for_gn
+    native_os_for_gn=$(_get_os_type_internal) # From utils.sh; for GN, we need "mac", "linux", "win"
+
+    # Determine FINAL_TARGET_OS (for GN's target_os)
+    if [ -z "$HENSURF_TARGET_OS" ]; then
+        FINAL_TARGET_OS="$native_os_for_gn"
+        log_info "HENSURF_TARGET_OS not set by environment, defaulting to native OS for GN: '$FINAL_TARGET_OS'"
     else
-        log_warn "Unknown host OS type: $HOST_OS_TYPE. Defaulting target CPU to x64."
-        NATIVE_CPU_ARCH="x64" # Fallback for unknown OS
+        FINAL_TARGET_OS="$HENSURF_TARGET_OS"
+        log_info "Using HENSURF_TARGET_OS from environment: '$FINAL_TARGET_OS'"
     fi
-    FINAL_TARGET_CPU="$NATIVE_CPU_ARCH"
-    log_info "HENSURF_TARGET_CPU not set, defaulting to detected native CPU: $FINAL_TARGET_CPU for host OS $HOST_OS_TYPE"
-else
-    FINAL_TARGET_CPU="$HENSURF_TARGET_CPU"
-    log_info "Using HENSURF_TARGET_CPU: $FINAL_TARGET_CPU"
-fi
 
-# Determine FINAL_OUTPUT_DIR
-if [ -z "$HENSURF_OUTPUT_DIR" ]; then
-    # Default output dir includes OS and CPU if they were determined (even if defaulted from native)
-    # Ensure FINAL_TARGET_OS and FINAL_TARGET_CPU are non-empty before forming the path.
-    _DEFAULT_OS_FOR_PATH=${FINAL_TARGET_OS:-"unknownOS"}
-    _DEFAULT_CPU_FOR_PATH=${FINAL_TARGET_CPU:-"unknownCPU"}
-    FINAL_OUTPUT_DIR="out/HenSurf-${_DEFAULT_OS_FOR_PATH}-${_DEFAULT_CPU_FOR_PATH}"
-    log_info "HENSURF_OUTPUT_DIR not set, defaulting to: $FINAL_OUTPUT_DIR"
-else
-    FINAL_OUTPUT_DIR="$HENSURF_OUTPUT_DIR"
-    log_info "Using HENSURF_OUTPUT_DIR: $FINAL_OUTPUT_DIR"
-fi
-
-# Log file path (relative to CHROMIUM_SRC_DIR)
-# Ensure FINAL_OUTPUT_DIR is valid before using it in path construction
-if [[ -z "$FINAL_OUTPUT_DIR" || "$FINAL_OUTPUT_DIR" == "/" ]]; then
-    log_error "FINAL_OUTPUT_DIR is empty or invalid ('$FINAL_OUTPUT_DIR'). Cannot proceed."
-    exit 1
-fi
-BUILD_LOG_FILE="$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/build.log"
-
-# Ensure output directory exists for the log file and build artifacts
-mkdir -p "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR"
-# Clear previous log file or create if not exists
-true >"$BUILD_LOG_FILE"
-
-log_info "🔨 Building HenSurf Browser for $FINAL_TARGET_OS ($FINAL_TARGET_CPU)..." | tee -a "$BUILD_LOG_FILE"
-log_info "   Output directory (relative to $CHROMIUM_SRC_DIR): $FINAL_OUTPUT_DIR" | tee -a "$BUILD_LOG_FILE"
-log_info "   Build log: $BUILD_LOG_FILE" | tee -a "$BUILD_LOG_FILE"
-
-
-# Check if Chromium source exists
-if [ ! -d "$CHROMIUM_SRC_DIR" ]; then
-    log_error "❌ Chromium source not found at $CHROMIUM_SRC_DIR. Please run ./scripts/fetch-chromium.sh first." | tee -a "$BUILD_LOG_FILE"
-    exit 1
-fi
-log_success "✅ Chromium source directory found: $CHROMIUM_SRC_DIR" | tee -a "$BUILD_LOG_FILE"
-
-# Check if essential HenSurf config (e.g. from apply-patches.sh) exists.
-# This is a proxy check; args.gn will be specific to the build dir.
-# We assume if scripts/apply-patches.sh was run, essential files under build/config/hensurf/ are present.
-if [ ! -f "$PROJECT_ROOT/config/hensurf.gn" ]; then
-    log_error "❌ HenSurf base configuration (e.g., config/hensurf.gn) not found. Please run ./scripts/apply-patches.sh or ensure config is in place." | tee -a "$BUILD_LOG_FILE"
-    exit 1
-fi
-log_success "✅ HenSurf base configuration (config/hensurf.gn) found." | tee -a "$BUILD_LOG_FILE"
-
-# Depot Tools Setup
-DEPOT_TOOLS_DIR=$(get_depot_tools_dir "$PROJECT_ROOT")
-if [ -z "$DEPOT_TOOLS_DIR" ]; then
-    log_error "Failed to determine depot_tools directory path. Exiting." | tee -a "$BUILD_LOG_FILE"
-    exit 1
-fi
-if ! add_depot_tools_to_path "$DEPOT_TOOLS_DIR"; then
-    log_error "Failed to add depot_tools to PATH. Exiting." | tee -a "$BUILD_LOG_FILE"
-    # add_depot_tools_to_path already logs details to stdout, which will be in the main log if script output is captured.
-    exit 1
-fi
-# add_depot_tools_to_path already logs success and checks for gn/autoninja
-
-# Configure ccache
-export CCACHE_CPP2=true
-export CCACHE_SLOPPINESS="time_macros"
-# Optional: export CCACHE_DIR="/path/to/your/ccache_directory" (log if set)
-if [ -n "$CCACHE_DIR" ]; then
-    log_info "ℹ️ Using custom CCACHE_DIR: $CCACHE_DIR" | tee -a "$BUILD_LOG_FILE"
-fi
-
-# Verify ccache is found and print stats
-if command_exists "ccache"; then
-    log_success "✅ ccache found: $(command -v ccache)" | tee -a "$BUILD_LOG_FILE"
-    log_info "Initial ccache statistics:" | tee -a "$BUILD_LOG_FILE"
-    ccache -s 2>&1 | tee -a "$BUILD_LOG_FILE"
-else
-    log_warn "⚠️ ccache command not found. Build will proceed without ccache (ensure use_ccache is false in args.gn or ccache is installed)." | tee -a "$BUILD_LOG_FILE"
-fi
-
-# Navigate to the chromium source directory
-cd "$CHROMIUM_SRC_DIR"
-log_info "Current directory: $(pwd)" | tee -a "$BUILD_LOG_FILE"
-
-
-# Check system requirements (these checks are for the HOST machine running the build)
-log_info "🔍 Checking HOST system requirements..." | tee -a "$BUILD_LOG_FILE"
-# HOST_OS_TYPE is already determined above
-MEMORY_GB=0
-CPU_CORES=1 # Default to 1 core if detection fails
-
-case "$HOST_OS_TYPE" in
-    "mac") # Changed from "macos" to "mac" to match get_os_type
-        log_info "🍏 Checking macOS host system requirements..." | tee -a "$BUILD_LOG_FILE"
-        MEMORY_GB=$(sysctl -n hw.memsize | awk '{print int($1/1024/1024/1024)}')
-        CPU_CORES=$(sysctl -n hw.ncpu)
-        ;;
-    "linux")
-        log_info "🐧 Checking Linux system requirements..." | tee -a "$BUILD_LOG_FILE"
-        if [ -f /proc/meminfo ]; then
-            MEMORY_GB=$(grep MemTotal /proc/meminfo | awk '{print int($2/1024/1024)}')
-        else # Fallback for systems without /proc/meminfo but might have 'free'
-            MEMORY_KB=$(free | grep Mem: | awk '{print $2}')
-            if [[ "$MEMORY_KB" =~ ^[0-9]+$ ]]; then
-                MEMORY_GB=$(awk -v memkb="$MEMORY_KB" 'BEGIN { printf "%.0f", memkb / 1024 / 1024 }')
-            else
-                log_warn "⚠️ Could not determine system memory from /proc/meminfo or free." | tee -a "$BUILD_LOG_FILE"
-            fi
-        fi
-        if command_exists "nproc"; then
-            CPU_CORES=$(nproc)
-        else
-            CPU_CORES=$(grep -c ^processor /proc/cpuinfo || echo 1) # Fallback for CPU cores
-            log_warn "⚠️ nproc command not found, using /proc/cpuinfo or defaulting to $CPU_CORES CPU core(s) for estimates." | tee -a "$BUILD_LOG_FILE"
-        fi
-        ;;
-    "windows")
-        log_info "💻 Checking Windows system requirements..." | tee -a "$BUILD_LOG_FILE"
-        if ! command_exists "wmic"; then
-            log_warn "⚠️ 'wmic' command not found. Cannot check system requirements accurately." | tee -a "$BUILD_LOG_FILE"
-            MEMORY_GB=0 # Default if wmic fails
-            CPU_CORES=1 # Default if wmic fails
-        else
-            TOTAL_MEM_KB_STR=$(wmic OS get TotalVisibleMemorySize /value 2>/dev/null | tr -d '\r' | grep TotalVisibleMemorySize | cut -d'=' -f2)
-            if [[ -n "$TOTAL_MEM_KB_STR" && "$TOTAL_MEM_KB_STR" =~ ^[0-9]+$ ]]; then
-                MEMORY_GB=$(awk -v memkb="$TOTAL_MEM_KB_STR" 'BEGIN { printf "%.0f", memkb / 1024 / 1024 }')
-            else
-                log_warn "⚠️ Could not determine TotalVisibleMemorySize using wmic. Output: '$TOTAL_MEM_KB_STR'" | tee -a "$BUILD_LOG_FILE"
-                MEMORY_GB=0
-            fi
-
-            CPU_CORES_STR=$(wmic cpu get NumberOfLogicalProcessors /value 2>/dev/null | tr -d '\r' | grep NumberOfLogicalProcessors | cut -d'=' -f2)
-            if [[ -n "$CPU_CORES_STR" && "$CPU_CORES_STR" =~ ^[0-9]+$ ]]; then
-                CPU_CORES=$CPU_CORES_STR
-            else
-                log_warn "⚠️ Could not determine NumberOfLogicalProcessors using wmic. Output: '$CPU_CORES_STR'" | tee -a "$BUILD_LOG_FILE"
-                CPU_CORES=1
-            fi
-        fi
-        ;;
-    *)
-        log_warn "⚠️ Unsupported host OS ($HOST_OS_TYPE) for detailed system checks. Proceeding with default assumptions (0GB RAM, 1 CPU core)." | tee -a "$BUILD_LOG_FILE"
-        MEMORY_GB=0
-        CPU_CORES=1
-        ;;
-esac
-log_info "   Detected RAM: ${MEMORY_GB}GB, CPU Cores: $CPU_CORES" | tee -a "$BUILD_LOG_FILE"
-
-MIN_RAM_GB=16 # Recommended RAM for building Chromium
-if [ "$MEMORY_GB" -lt "$MIN_RAM_GB" ]; then
-    if [ "$MEMORY_GB" -gt 0 ]; then # If memory detection worked but is low
-        log_warn "⚠️  Warning: Only ${MEMORY_GB}GB RAM detected on host. ${MIN_RAM_GB}GB+ recommended for building Chromium." | tee -a "$BUILD_LOG_FILE"
-    elif [[ "$HOST_OS_TYPE" == "win" || "$HOST_OS_TYPE" == "mac" || "$HOST_OS_TYPE" == "linux" ]]; then # If specific OS where detection might have failed
-        log_warn "⚠️  Warning: Could not reliably determine host system RAM or it is less than ${MIN_RAM_GB}GB. ${MIN_RAM_GB}GB+ recommended for building Chromium." | tee -a "$BUILD_LOG_FILE"
+    # Determine FINAL_TARGET_CPU (for GN's target_cpu)
+    if [ -z "$HENSURF_TARGET_CPU" ]; then
+        local NATIVE_CPU_ARCH=""
+        # Use the GN-compatible native OS type for CPU detection logic
+        case "$native_os_for_gn" in
+            "macos")
+                _UNAME_M_OUTPUT=$(uname -m)
+                if [[ "$_UNAME_M_OUTPUT" == "x86_64" ]]; then NATIVE_CPU_ARCH="x64";
+                elif [[ "$_UNAME_M_OUTPUT" == "arm64" ]]; then NATIVE_CPU_ARCH="arm64";
+                else log_warn "Unknown macOS arch via uname -m: '$_UNAME_M_OUTPUT'. Defaulting to x64."; NATIVE_CPU_ARCH="x64"; fi
+                ;;
+            "linux")
+                _UNAME_M_OUTPUT=$(uname -m)
+                if [[ "$_UNAME_M_OUTPUT" == "x86_64" ]]; then NATIVE_CPU_ARCH="x64";
+                elif [[ "$_UNAME_M_OUTPUT" == "aarch64" ]]; then NATIVE_CPU_ARCH="arm64";
+                elif [[ "$_UNAME_M_OUTPUT" == "armv7l" ]]; then NATIVE_CPU_ARCH="arm"; # 32-bit ARM
+                else log_warn "Unknown Linux arch via uname -m: '$_UNAME_M_OUTPUT'. Defaulting to x64."; NATIVE_CPU_ARCH="x64"; fi
+                ;;
+            "windows")
+                if [[ -n "$PROCESSOR_ARCHITECTURE" ]]; then # Primarily for CMD/PowerShell
+                    if [[ "$PROCESSOR_ARCHITECTURE" == "AMD64" ]] || [[ "$PROCESSOR_ARCHITECTURE" == "EM64T" ]]; then NATIVE_CPU_ARCH="x64";
+                    elif [[ "$PROCESSOR_ARCHITECTURE" == "ARM64" ]]; then NATIVE_CPU_ARCH="arm64";
+                    else log_warn "Unknown Windows arch (PROCESSOR_ARCHITECTURE): '$PROCESSOR_ARCHITECTURE'. Defaulting to x64."; NATIVE_CPU_ARCH="x64"; fi
+                elif [[ "$(uname -m)" == "x86_64" ]]; then # Fallback for Git Bash/MSYS
+                    NATIVE_CPU_ARCH="x64"
+                elif [[ "$(uname -m)" == "aarch64" ]]; then # Fallback for Git Bash/MSYS ARM
+                     NATIVE_CPU_ARCH="arm64"
+                else
+                    log_warn "Unknown Windows arch (uname -m): '$(uname -m)'. Defaulting to x64."; NATIVE_CPU_ARCH="x64";
+                fi
+                ;;
+            *)
+                log_warn "Unsupported host OS '$native_os_for_gn' for CPU detection. Defaulting target CPU to x64."
+                NATIVE_CPU_ARCH="x64"
+                ;;
+        esac
+        FINAL_TARGET_CPU="$NATIVE_CPU_ARCH"
+        log_info "HENSURF_TARGET_CPU not set by environment, defaulting to detected native CPU: '$FINAL_TARGET_CPU' (host OS for detection: '$native_os_for_gn')"
+    else
+        FINAL_TARGET_CPU="$HENSURF_TARGET_CPU"
+        log_info "Using HENSURF_TARGET_CPU from environment: '$FINAL_TARGET_CPU'"
     fi
-    # Ask to continue only if RAM is detected as low, or if detection failed on a known OS type.
-    if [[ "$MEMORY_GB" -lt "$MIN_RAM_GB" && ("$MEMORY_GB" -gt 0 || "$HOST_OS_TYPE" == "win" || "$HOST_OS_TYPE" == "mac" || "$HOST_OS_TYPE" == "linux") ]]; then
-        read -r -p "Continue anyway? (y/N): " REPLY
-        echo
-        if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
-            log_error "User aborted due to low RAM." | tee -a "$BUILD_LOG_FILE"
-            exit 1
-        fi
+
+    # Determine FINAL_OUTPUT_DIR
+    if [ -z "$HENSURF_OUTPUT_DIR" ]; then
+        # Sanitize OS/CPU names for path, default to "unknown" if empty
+        local path_os=${FINAL_TARGET_OS:-"unknownOS"}
+        local path_cpu=${FINAL_TARGET_CPU:-"unknownCPU"}
+        FINAL_OUTPUT_DIR="out/HenSurf-${path_os}-${path_cpu}"
+        log_info "HENSURF_OUTPUT_DIR not set by environment, defaulting to: '$FINAL_OUTPUT_DIR'"
+    else
+        FINAL_OUTPUT_DIR="$HENSURF_OUTPUT_DIR"
+        log_info "Using HENSURF_OUTPUT_DIR from environment: '$FINAL_OUTPUT_DIR'"
     fi
-fi
 
-# Check available disk space on HOST
-MIN_BUILD_DISK_SPACE_GB=50 # Required disk space for the build output and src
-AVAILABLE_SPACE_GB=0
-
-case "$HOST_OS_TYPE" in
-    "mac"|"linux") # Corrected "macos" to "mac"
-        AVAILABLE_SPACE_GB=$(df -BG "$CHROMIUM_SRC_DIR" 2>/dev/null | awk 'NR==2 {print $4}' | sed 's/G//' | tr -d '[:space:]')
-        if ! [[ "$AVAILABLE_SPACE_GB" =~ ^[0-9]+$ ]]; then AVAILABLE_SPACE_GB=0; fi # Default to 0 if parsing failed
-        log_info "Disk space check ($HOST_OS_TYPE) for $CHROMIUM_SRC_DIR: ${AVAILABLE_SPACE_GB}GB available." | tee -a "$BUILD_LOG_FILE"
-        ;;
-    "win") # Corrected "windows" to "win"
-        log_info "💻 Checking disk space on Windows in $CHROMIUM_SRC_DIR..." | tee -a "$BUILD_LOG_FILE"
-        CURRENT_DRIVE_LETTER_BUILD=$(echo "$CHROMIUM_SRC_DIR" | cut -d':' -f1)
-        if ! command_exists "wmic"; then
-            log_warn "⚠️ 'wmic' command not found. Cannot check disk space accurately on Windows." | tee -a "$BUILD_LOG_FILE"
-            AVAILABLE_SPACE_GB=0
-        else
-            AVAILABLE_BYTES_STR_BUILD=$(wmic logicaldisk where "DeviceID='${CURRENT_DRIVE_LETTER_BUILD}:'" get FreeSpace /value | tr -d '\r' | grep FreeSpace | cut -d'=' -f2)
-            if [[ -z "$AVAILABLE_BYTES_STR_BUILD" || ! "$AVAILABLE_BYTES_STR_BUILD" =~ ^[0-9]+$ ]]; then
-                 log_warn "⚠️ Could not determine free space using wmic for drive ${CURRENT_DRIVE_LETTER_BUILD}: (Output: '$AVAILABLE_BYTES_STR_BUILD')." | tee -a "$BUILD_LOG_FILE"
-                 AVAILABLE_SPACE_GB=0 # Default if wmic fails
-            else
-                AVAILABLE_SPACE_GB=$(awk -v bytes="$AVAILABLE_BYTES_STR_BUILD" 'BEGIN { printf "%.0f", bytes / 1024 / 1024 / 1024 }')
-            fi
-        fi
-        log_info "Drive ${CURRENT_DRIVE_LETTER_BUILD}: (for $CHROMIUM_SRC_DIR) has approximately ${AVAILABLE_SPACE_GB}GB free." | tee -a "$BUILD_LOG_FILE"
-        ;;
-    *)
-        log_warn "⚠️ Unsupported host OS for disk space check: $HOST_OS_TYPE. Assuming ${MIN_BUILD_DISK_SPACE_GB}GB available." | tee -a "$BUILD_LOG_FILE"
-        AVAILABLE_SPACE_GB=${MIN_BUILD_DISK_SPACE_GB} # Assume enough for unknown OS
-        ;;
-esac
-
-if ! [[ "$AVAILABLE_SPACE_GB" =~ ^[0-9]+$ ]]; then # Sanitize if not a number
-    log_warn "⚠️ Could not reliably determine available disk space for $CHROMIUM_SRC_DIR. Detected: '$AVAILABLE_SPACE_GB'. Defaulting to 0 for check." | tee -a "$BUILD_LOG_FILE"
-    AVAILABLE_SPACE_GB=0 # Treat as 0 if not a number
-fi
-
-if [ "$AVAILABLE_SPACE_GB" -lt "$MIN_BUILD_DISK_SPACE_GB" ]; then
-    log_warn "⚠️  Warning: Only ${AVAILABLE_SPACE_GB}GB detected as available for $CHROMIUM_SRC_DIR. Build output requires ~${MIN_BUILD_DISK_SPACE_GB}GB." | tee -a "$BUILD_LOG_FILE"
-    read -r -p "Continue anyway? (y/N): " REPLY
-    echo
-    if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
-        log_error "User aborted due to low disk space." | tee -a "$BUILD_LOG_FILE"
+    # Validate FINAL_OUTPUT_DIR and set BUILD_LOG_FILE
+    if [[ -z "$FINAL_OUTPUT_DIR" || "$FINAL_OUTPUT_DIR" == "/" ]]; then
+        log_error "FINAL_OUTPUT_DIR is empty or invalid ('$FINAL_OUTPUT_DIR'). Cannot proceed."
         exit 1
     fi
-fi
+    # Ensure BUILD_LOG_FILE is an absolute path or relative to a known location if needed.
+    # Here, it's relative to CHROMIUM_SRC_DIR.
+    BUILD_LOG_FILE="$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/build.log"
 
+    # Ensure output directory for the log file exists; tee will also create the log file.
+    mkdir -p "$(dirname "$BUILD_LOG_FILE")"
+    # Clear previous log file or create if not exists, then append to it.
+    # Using tee ensures messages go to both stdout and the log file.
+    true >"$BUILD_LOG_FILE"
 
-# Feature flags (can be overridden by command-line args)
-HENSURF_ENABLE_BLOATWARE=0 # Default to disabled
-BUILD_CHROMEDRIVER=true
-BUILD_MINI_INSTALLER=true
-DEV_FAST_MODE=false
+    log_info "🔨 Building HenSurf Browser for $FINAL_TARGET_OS ($FINAL_TARGET_CPU)..." | tee -a "$BUILD_LOG_FILE"
+    log_info "   Output directory (relative to $CHROMIUM_SRC_DIR): $FINAL_OUTPUT_DIR" | tee -a "$BUILD_LOG_FILE"
+    log_info "   Build log: $BUILD_LOG_FILE" | tee -a "$BUILD_LOG_FILE"
+}
 
-# Parse command-line arguments
-while [[ $# -gt 0 ]]; do
-    key="$1"
-    case $key in
-        --enable-bloatware) HENSURF_ENABLE_BLOATWARE=1; shift ;;
-        --no-enable-bloatware) HENSURF_ENABLE_BLOATWARE=0; shift ;;
-        --skip-chromedriver) BUILD_CHROMEDRIVER=false; shift ;;
-        --skip-mini-installer) BUILD_MINI_INSTALLER=false; shift ;;
-        --dev-fast) DEV_FAST_MODE=true; shift ;;
-        *) shift ;; # unknown option
+# Checks host system requirements: OS, memory, CPU cores, and disk space.
+# Warns prominently if requirements are below recommended values and may prompt the user to continue.
+# Globals modified: MEMORY_GB, CPU_CORES.
+# Globals used: HOST_OS_TYPE (set by setup_environment_variables), CHROMIUM_SRC_DIR, BUILD_LOG_FILE.
+check_system_requirements() {
+    log_info "--- Checking Host System Requirements ---"
+    # HOST_OS_TYPE (specific distro) is already set. For broad checks, use _get_os_type_internal.
+    local current_host_os_category
+    current_host_os_category=$(_get_os_type_internal) # e.g., "macos", "linux", "windows"
+
+    MEMORY_GB=0 # Will be updated by OS-specific checks
+    CPU_CORES=1 # Default to 1 core if detection fails
+
+    case "$current_host_os_category" in
+        "macos")
+            log_info "🍏 Checking macOS host system requirements..." | tee -a "$BUILD_LOG_FILE"
+            MEMORY_GB=$(sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1024/1024/1024)}' || echo 0)
+            CPU_CORES=$(sysctl -n hw.ncpu 2>/dev/null || echo 1)
+            ;;
+        "linux")
+            log_info "🐧 Checking Linux system requirements..." | tee -a "$BUILD_LOG_FILE"
+            if [ -f /proc/meminfo ]; then
+                MEMORY_GB=$(grep MemTotal /proc/meminfo | awk '{print int($2/1024/1024)}')
+            else
+                local MEMORY_KB
+                local MEMORY_KB
+                MEMORY_KB=$(free | grep Mem: | awk '{print $2}')
+                if [[ "$MEMORY_KB" =~ ^[0-9]+$ ]]; then
+                    MEMORY_GB=$(awk -v memkb="$MEMORY_KB" 'BEGIN { printf "%.0f", memkb / 1024 / 1024 }')
+                else
+                    log_warn "⚠️ Could not determine system memory from /proc/meminfo or free." | tee -a "$BUILD_LOG_FILE"
+                fi
+            fi
+            if command_exists "nproc"; then CPU_CORES=$(nproc);
+            else CPU_CORES=$(grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 1); log_warn "⚠️ nproc not found, using /proc/cpuinfo or defaulting to $CPU_CORES." | tee -a "$BUILD_LOG_FILE"; fi
+            ;;
+        "windows")
+            log_info "💻 Checking Windows system requirements..." | tee -a "$BUILD_LOG_FILE"
+            if ! command_exists "wmic"; then
+                log_warn "⚠️ 'wmic' command not found. Cannot check system requirements accurately." | tee -a "$BUILD_LOG_FILE"
+            else
+                local TOTAL_MEM_KB_STR
+                local TOTAL_MEM_KB_STR
+                TOTAL_MEM_KB_STR=$(wmic OS get TotalVisibleMemorySize /value 2>/dev/null | tr -d '\r' | grep TotalVisibleMemorySize | cut -d'=' -f2)
+                if [[ -n "$TOTAL_MEM_KB_STR" && "$TOTAL_MEM_KB_STR" =~ ^[0-9]+$ ]]; then
+                    MEMORY_GB=$(awk -v memkb="$TOTAL_MEM_KB_STR" 'BEGIN { printf "%.0f", memkb / 1024 / 1024 }')
+                else
+                    log_warn "⚠️ Could not determine TotalVisibleMemorySize via wmic. Output: '$TOTAL_MEM_KB_STR'" | tee -a "$BUILD_LOG_FILE"; MEMORY_GB=0;
+                fi
+                local CPU_CORES_STR
+                CPU_CORES_STR=$(wmic cpu get NumberOfLogicalProcessors /value 2>/dev/null | tr -d '\r' | grep NumberOfLogicalProcessors | cut -d'=' -f2)
+                if [[ -n "$CPU_CORES_STR" && "$CPU_CORES_STR" =~ ^[0-9]+$ ]]; then CPU_CORES=$CPU_CORES_STR;
+                else log_warn "⚠️ Could not determine NumberOfLogicalProcessors via wmic. Output: '$CPU_CORES_STR'" | tee -a "$BUILD_LOG_FILE"; CPU_CORES=1; fi
+            fi
+            ;;
+        *)
+            # Use HOST_OS_TYPE (specific distro) in this warning for better user info
+            log_warn "⚠️ Unsupported host OS ('$current_host_os_category' / specific: '$HOST_OS_TYPE') for detailed system checks. Defaults: 0GB RAM, 1 CPU core." | tee -a "$BUILD_LOG_FILE"
+            MEMORY_GB=0; CPU_CORES=1;
+            ;;
     esac
-done
+    log_info "   Detected RAM: ${MEMORY_GB}GB, CPU Cores: $CPU_CORES" | tee -a "$BUILD_LOG_FILE"
 
-GN_ARGS_LIST=()
-if [ "$DEV_FAST_MODE" = true ]; then
-    log_info "🚀 Developer Fast Mode enabled: is_component_build=true, treat_warnings_as_errors=false" | tee -a "$BUILD_LOG_FILE"
-    GN_ARGS_LIST+=("is_component_build=true")
-    # For faster local builds, treat_warnings_as_errors=false can be helpful
-    # However, for CI or release builds, it's better to have it true.
-    # This could be a command-line flag or based on build type.
-    GN_ARGS_LIST+=("treat_warnings_as_errors=false")
-fi
-
-# Add core target OS and CPU to GN ARGS
-# These are derived from HENSURF_TARGET_OS/CPU or native host detection
-GN_ARGS_LIST+=("target_os=\"$FINAL_TARGET_OS\"")
-GN_ARGS_LIST+=("target_cpu=\"$FINAL_TARGET_CPU\"")
-
-# Add other feature flags from command line or defaults
-GN_ARGS_LIST+=("hensurf_enable_bloatware=$HENSURF_ENABLE_BLOATWARE")
-# Ensure important HenSurf configurations are included.
-# These might be implicitly imported by `import("//build/config/hensurf/hensurf.gn")`
-# in the main args.gn file of the output directory, or explicitly set here.
-# For example: `import("//build/config/compiler/compiler.gni")`
-#              `import("//build/config/features.gni")`
-#              `is_official_build=false`
-#              `is_chrome_branded=false`
-#              `is_debug=false` (for release builds)
-#              `dcheck_always_on=false` (for release builds)
-#              `symbol_level=0` (for release builds to reduce size)
-#              `blink_symbol_level=0` (for release builds)
-
-# Construct the final GN args string
-GN_ARGS_STRING_WITH_TARGETS=""
-for item in "${GN_ARGS_LIST[@]}"; do
-    if [ -z "$GN_ARGS_STRING_WITH_TARGETS" ]; then
-        GN_ARGS_STRING_WITH_TARGETS="$item"
-    else
-        GN_ARGS_STRING_WITH_TARGETS="$GN_ARGS_STRING_WITH_TARGETS $item"
-    fi
-done
-
-# Generate build files using FINAL_OUTPUT_DIR
-# The args.gn file within $FINAL_OUTPUT_DIR should contain `import("//build/config/hensurf/hensurf.gn")`
-# to load all HenSurf specific build arguments.
-log_info "⚙️  Generating build files in $FINAL_OUTPUT_DIR..." | tee -a "$BUILD_LOG_FILE"
-log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Starting gn generation..." | tee -a "$BUILD_LOG_FILE"
-log_info "   GN ARGS to be applied: $GN_ARGS_STRING_WITH_TARGETS" | tee -a "$BUILD_LOG_FILE"
-log_info "   Target output directory for gn: $FINAL_OUTPUT_DIR" | tee -a "$BUILD_LOG_FILE"
-
-# The command `gn gen` will create $FINAL_OUTPUT_DIR if it doesn't exist,
-# and create an args.gn file within it, then populate the build tree.
-# If args.gn already exists, it will be overwritten with these command-line args.
-gn gen "$FINAL_OUTPUT_DIR" --args="$GN_ARGS_STRING_WITH_TARGETS" 2>&1 | tee -a "$BUILD_LOG_FILE"
-GN_GEN_STATUS=${PIPESTATUS[0]} # Get status of gn gen command
-if [ "$GN_GEN_STATUS" -ne 0 ]; then
-    log_error "❌ gn gen failed with status $GN_GEN_STATUS." | tee -a "$BUILD_LOG_FILE"
-    exit 1
-fi
-log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished gn generation." | tee -a "$BUILD_LOG_FILE"
-
-# Show build configuration from the generated output directory
-log_info "📋 Build configuration for $FINAL_OUTPUT_DIR (from gn args $FINAL_OUTPUT_DIR --list --short):" | tee -a "$BUILD_LOG_FILE"
-gn args "$FINAL_OUTPUT_DIR" --list --short 2>&1 | tee -a "$BUILD_LOG_FILE"
-
-# Estimate build time (based on HOST capabilities)
-BASE_BUILD_HOURS=8
-if [[ -n "$HENSURF_BASE_BUILD_HOURS" && "$HENSURF_BASE_BUILD_HOURS" =~ ^[0-9]+([.][0-9]+)?$ && $(echo "$HENSURF_BASE_BUILD_HOURS > 0" | bc -l) -eq 1 ]]; then
-    BASE_BUILD_HOURS=$HENSURF_BASE_BUILD_HOURS
-    log_info "ℹ️ Using HENSURF_BASE_BUILD_HOURS=$HENSURF_BASE_BUILD_HOURS for estimation." | tee -a "$BUILD_LOG_FILE"
-fi
-
-ESTIMATED_HOURS=$(awk -v base="$BASE_BUILD_HOURS" -v cores="$CPU_CORES" 'BEGIN { printf "%.1f", base / cores }')
-if (( $(echo "$ESTIMATED_HOURS < 0.5" | bc -l) )); then ESTIMATED_HOURS="<30 minutes";
-elif (( $(echo "$ESTIMATED_HOURS < 1" | bc -l) )); then ESTIMATED_HOURS="<1 hour";
-else ESTIMATED_HOURS=$(printf "%.0f hours" "$ESTIMATED_HOURS"); fi
-
-log_info "" | tee -a "$BUILD_LOG_FILE"
-log_info "🚀 Starting HenSurf build..." | tee -a "$BUILD_LOG_FILE"
-log_info "📊 System info:" | tee -a "$BUILD_LOG_FILE"
-log_info "   CPU cores: $CPU_CORES" | tee -a "$BUILD_LOG_FILE"
-log_info "   Memory: ${MEMORY_GB}GB" | tee -a "$BUILD_LOG_FILE"
-log_info "   Estimated time: ~${ESTIMATED_HOURS} (This is a VERY ROUGH estimate.)" | tee -a "$BUILD_LOG_FILE"
-log_info "" | tee -a "$BUILD_LOG_FILE"
-log_info "⏳ This will take a while. You can monitor progress in another terminal with:" | tee -a "$BUILD_LOG_FILE"
-log_info "   tail -f \"$BUILD_LOG_FILE\"" | tee -a "$BUILD_LOG_FILE"
-log_info "" | tee -a "$BUILD_LOG_FILE"
-
-# Build HenSurf (chrome target) using FINAL_OUTPUT_DIR
-log_info "🔨 Building HenSurf browser (chrome target) in $FINAL_OUTPUT_DIR..." | tee -a "$BUILD_LOG_FILE"
-log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Starting main browser build (autoninja -C \"$FINAL_OUTPUT_DIR\" chrome)..." | tee -a "$BUILD_LOG_FILE"
-log_info "Ninja will now show detailed build progress (e.g., [X/Y] files compiled)..." | tee -a "$BUILD_LOG_FILE"
-
-autoninja -C "$FINAL_OUTPUT_DIR" chrome 2>&1 | tee -a "$BUILD_LOG_FILE"
-CHROME_BUILD_STATUS=${PIPESTATUS[0]} # Get status of autoninja command
-if [ "$CHROME_BUILD_STATUS" -ne 0 ]; then
-    log_error "❌ autoninja chrome build failed with status $CHROME_BUILD_STATUS." | tee -a "$BUILD_LOG_FILE"
-    exit 1
-fi
-log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished main browser build." | tee -a "$BUILD_LOG_FILE"
-
-if command_exists "ccache"; then
-    log_info "Final ccache statistics after main browser build:" | tee -a "$BUILD_LOG_FILE"
-    ccache -s 2>&1 | tee -a "$BUILD_LOG_FILE"
-fi
-
-# Build additional components
-EXE_SUFFIX=""
-# Use FINAL_TARGET_OS for determining suffix, not HOST_OS_TYPE
-[[ "$FINAL_TARGET_OS" == "win" ]] && EXE_SUFFIX=".exe"
-
-if [ "$BUILD_CHROMEDRIVER" = true ]; then
-    log_info "🔨 Building chromedriver in $FINAL_OUTPUT_DIR..." | tee -a "$BUILD_LOG_FILE"
-    if [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/chromedriver$EXE_SUFFIX" ]; then
-        log_info "ℹ️ chromedriver artifact already exists in $FINAL_OUTPUT_DIR. Skipping build." | tee -a "$BUILD_LOG_FILE"
-    else
-        log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Starting optional component build: chromedriver..." | tee -a "$BUILD_LOG_FILE"
-        autoninja -C "$FINAL_OUTPUT_DIR" chromedriver 2>&1 | tee -a "$BUILD_LOG_FILE"
-        CHROMEDRIVER_BUILD_STATUS=${PIPESTATUS[0]}
-        if [[ $CHROMEDRIVER_BUILD_STATUS -ne 0 ]]; then
-            log_warn "⚠️ Optional component chromedriver failed to build (exit code $CHROMEDRIVER_BUILD_STATUS) in $FINAL_OUTPUT_DIR. Continuing." | tee -a "$BUILD_LOG_FILE"
-        else
-            log_success "✅ Optional component chromedriver built successfully in $FINAL_OUTPUT_DIR." | tee -a "$BUILD_LOG_FILE"
+    local MIN_RAM_GB=16 # Recommended RAM for Chromium build
+    if ! [[ "$MEMORY_GB" =~ ^[0-9]+$ && "$MEMORY_GB" -ge "$MIN_RAM_GB" ]]; then # Check if less or not a number
+        if [[ "$MEMORY_GB" =~ ^[0-9]+$ && "$MEMORY_GB" -gt 0 ]]; then # Detected, but low
+            log_warn "🔥🔥🔥 LOW RAM WARNING: Only ${MEMORY_GB}GB RAM detected. ${MIN_RAM_GB}GB+ recommended for building Chromium. 🔥🔥🔥" | tee -a "$BUILD_LOG_FILE"
+        else # Detection failed or was 0
+             log_warn "🔥🔥🔥 RAM WARNING: Could not reliably determine host system RAM or it is less than ${MIN_RAM_GB}GB. ${MIN_RAM_GB}GB+ recommended. 🔥🔥🔥" | tee -a "$BUILD_LOG_FILE"
         fi
-        log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished optional component build: chromedriver." | tee -a "$BUILD_LOG_FILE"
+        # Ask to continue only if RAM is detected as low, or if detection failed on a known OS type.
+        if [[ "$MEMORY_GB" -lt "$MIN_RAM_GB" && ("$MEMORY_GB" -gt 0 || "$current_host_os_category" == "windows" || "$current_host_os_category" == "macos" || "$current_host_os_category" == "linux") ]]; then
+            read -r -p "Build might be very slow or fail. Continue anyway? (y/N): " REPLY; echo
+            if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then log_error "User aborted due to low RAM." | tee -a "$BUILD_LOG_FILE"; exit 1; fi
+        fi
     fi
-else
-    log_info "ℹ️ Skipping chromedriver build as per --skip-chromedriver flag." | tee -a "$BUILD_LOG_FILE"
-fi
 
-# Create application bundle for macOS (and build macOS installer)
-# This section should only run if the TARGET OS is mac
-if [[ "$FINAL_TARGET_OS" == "mac" ]]; then
-    log_info "📦 Creating macOS application bundle in $FINAL_OUTPUT_DIR..." | tee -a "$BUILD_LOG_FILE"
+    local MIN_BUILD_DISK_SPACE_GB=50 # Recommended disk space
+    local AVAILABLE_SPACE_GB=0
+    case "$current_host_os_category" in
+        "macos"|"linux")
+            # Get available space in GB for the directory containing CHROMIUM_SRC_DIR
+            AVAILABLE_SPACE_GB=$(df -BG "$CHROMIUM_SRC_DIR" 2>/dev/null | awk 'NR==2 {print $4}' | sed 's/G//' | tr -d '[:space:]' || echo 0)
+            if ! [[ "$AVAILABLE_SPACE_GB" =~ ^[0-9]+$ ]]; then AVAILABLE_SPACE_GB=0; fi # Default to 0 if parsing failed
+            log_info "Disk space check ($current_host_os_category) for $CHROMIUM_SRC_DIR: ${AVAILABLE_SPACE_GB}GB available." | tee -a "$BUILD_LOG_FILE"
+            ;;
+        "windows")
+            log_info "💻 Checking disk space on Windows in $CHROMIUM_SRC_DIR..." | tee -a "$BUILD_LOG_FILE"
+            local CURRENT_DRIVE_LETTER_BUILD
+            CURRENT_DRIVE_LETTER_BUILD=$(echo "$CHROMIUM_SRC_DIR" | cut -d':' -f1)
+            if ! command_exists "wmic"; then
+                log_warn "⚠️ 'wmic' command not found. Cannot check disk space accurately." | tee -a "$BUILD_LOG_FILE"
+            else
+                local AVAILABLE_BYTES_STR_BUILD
+                AVAILABLE_BYTES_STR_BUILD=$(wmic logicaldisk where "DeviceID='${CURRENT_DRIVE_LETTER_BUILD}:'" get FreeSpace /value | tr -d '\r' | grep FreeSpace | cut -d'=' -f2)
+                if [[ -z "$AVAILABLE_BYTES_STR_BUILD" || ! "$AVAILABLE_BYTES_STR_BUILD" =~ ^[0-9]+$ ]]; then
+                     log_warn "⚠️ Could not determine free space via wmic for drive ${CURRENT_DRIVE_LETTER_BUILD}: (Output: '$AVAILABLE_BYTES_STR_BUILD')." | tee -a "$BUILD_LOG_FILE"; AVAILABLE_SPACE_GB=0;
+                else
+                    AVAILABLE_SPACE_GB=$(awk -v bytes="$AVAILABLE_BYTES_STR_BUILD" 'BEGIN { printf "%.0f", bytes / 1024 / 1024 / 1024 }')
+                fi
+            fi
+            log_info "Drive ${CURRENT_DRIVE_LETTER_BUILD}: (for $CHROMIUM_SRC_DIR) has approx ${AVAILABLE_SPACE_GB}GB free." | tee -a "$BUILD_LOG_FILE"
+            ;;
+        *)
+            log_warn "⚠️ Unsupported host OS ($current_host_os_category) for disk space check. Assuming ${MIN_BUILD_DISK_SPACE_GB}GB." | tee -a "$BUILD_LOG_FILE"; AVAILABLE_SPACE_GB=${MIN_BUILD_DISK_SPACE_GB};
+            ;;
+    esac
+
+    if ! [[ "$AVAILABLE_SPACE_GB" =~ ^[0-9]+$ ]]; then
+        log_warn "⚠️ Could not reliably determine disk space for $CHROMIUM_SRC_DIR. Detected: '$AVAILABLE_SPACE_GB'. Defaulting to 0." | tee -a "$BUILD_LOG_FILE"; AVAILABLE_SPACE_GB=0;
+    fi
+
+    if [ "$AVAILABLE_SPACE_GB" -lt "$MIN_BUILD_DISK_SPACE_GB" ]; then
+        log_warn "🔥🔥🔥 LOW DISK SPACE WARNING: Only ${AVAILABLE_SPACE_GB}GB detected for $CHROMIUM_SRC_DIR. Build needs ~${MIN_BUILD_DISK_SPACE_GB}GB. 🔥🔥🔥" | tee -a "$BUILD_LOG_FILE"
+        read -r -p "Continue anyway? (y/N): " REPLY; echo
+        if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then log_error "User aborted due to low disk space." | tee -a "$BUILD_LOG_FILE"; exit 1; fi
+    fi
+}
+
+# Configures GN arguments based on command-line flags and defaults.
+# Populates GN_ARGS_STRING_WITH_TARGETS (global variable).
+# Modifies global feature flags: HENSURF_ENABLE_BLOATWARE, BUILD_CHROMEDRIVER, BUILD_MINI_INSTALLER, DEV_FAST_MODE.
+# Arguments:
+#   $@ - Command line arguments passed to the main script. These are parsed here to set feature flags.
+configure_gn_arguments() {
+    log_info "--- Configuring GN Arguments ---"
+    # Parse command-line arguments to override default feature flags
+    # These globals are modified: HENSURF_ENABLE_BLOATWARE, BUILD_CHROMEDRIVER, BUILD_MINI_INSTALLER, DEV_FAST_MODE
+    # Using a temporary array for arguments to avoid issues with `shift` in the loop if called multiple times or with `getopts` later.
+    local args_copy=("$@")
+    local i=0
+    while [ $i -lt ${#args_copy[@]} ]; do
+        local key="${args_copy[$i]}"
+        case $key in
+            --enable-bloatware) HENSURF_ENABLE_BLOATWARE=1 ;;
+            --no-enable-bloatware) HENSURF_ENABLE_BLOATWARE=0 ;;
+            --skip-chromedriver) BUILD_CHROMEDRIVER=false ;;
+            --skip-mini-installer) BUILD_MINI_INSTALLER=false ;;
+            --dev-fast) DEV_FAST_MODE=true ;;
+            # *) # Do not error on unknown options, allow them to be passed to other tools if necessary
+        esac
+        i=$((i + 1))
+    done
+
+    local GN_ARGS_LIST=() # Local array to build up arguments
+
+    # Developer Fast Mode options
+    if [ "$DEV_FAST_MODE" = true ]; then
+        log_info "🚀 Developer Fast Mode enabled: is_component_build=true, treat_warnings_as_errors=false" | tee -a "$BUILD_LOG_FILE"
+        GN_ARGS_LIST+=("is_component_build=true")
+        GN_ARGS_LIST+=("treat_warnings_as_errors=false") # Faster local iteration
+    else
+        # Default release-like flags (can be overridden by hensurf.gn if needed)
+        GN_ARGS_LIST+=("is_component_build=false")
+        GN_ARGS_LIST+=("treat_warnings_as_errors=true")
+        GN_ARGS_LIST+=("is_debug=false")
+        GN_ARGS_LIST+=("dcheck_always_on=false") # dcheck_always_on=true is for debug/dev
+        GN_ARGS_LIST+=("symbol_level=0") # Minimal symbols for smaller release builds
+        GN_ARGS_LIST+=("blink_symbol_level=0")
+    fi
+
+    # Core target settings (already determined in setup_environment_variables)
+    GN_ARGS_LIST+=("target_os=\"$FINAL_TARGET_OS\"")
+    GN_ARGS_LIST+=("target_cpu=\"$FINAL_TARGET_CPU\"")
+
+    # HenSurf specific features
+    GN_ARGS_LIST+=("hensurf_enable_bloatware=$HENSURF_ENABLE_BLOATWARE")
+    log_info "HenSurf Bloatware feature set to: $HENSURF_ENABLE_BLOATWARE" | tee -a "$BUILD_LOG_FILE"
+
+    # Other common Chromium build flags (add more as needed, or ensure they are in hensurf.gn)
+    GN_ARGS_LIST+=("is_official_build=false") # Typically false for custom builds
+    GN_ARGS_LIST+=("is_chrome_branded=false")  # Crucial for removing Google branding elements
+    # GN_ARGS_LIST+=("enable_nacl=false") # Example: Disable Native Client
+    # GN_ARGS_LIST+=("proprietary_codecs=true") # Example: Include proprietary codecs if licensing allows
+    # GN_ARGS_LIST+=("ffmpeg_branding=\"Chromium\"") # Or "Chrome" if proprietary_codecs=true
+
+    # Construct the final GN args string for use in `gn gen`
+    # This is a global variable, so it doesn't need to be returned.
+    GN_ARGS_STRING_WITH_TARGETS=""
+    for item in "${GN_ARGS_LIST[@]}"; do
+        if [ -z "$GN_ARGS_STRING_WITH_TARGETS" ]; then
+            GN_ARGS_STRING_WITH_TARGETS="$item"
+        else
+            # Append with a space separator
+            GN_ARGS_STRING_WITH_TARGETS="$GN_ARGS_STRING_WITH_TARGETS $item"
+        fi
+    done
+    log_info "Final GN ARGS to be applied: $GN_ARGS_STRING_WITH_TARGETS" | tee -a "$BUILD_LOG_FILE"
+}
+
+# Runs `gn gen` to generate build files using the configured arguments.
+# After generation, it lists the applied build configuration.
+# Uses global variables: FINAL_OUTPUT_DIR, GN_ARGS_STRING_WITH_TARGETS, BUILD_LOG_FILE.
+# Exits script on `gn gen` failure.
+run_gn_gen() {
+    log_info "--- Running GN Gen ---"
+    log_info "⚙️  Generating build files in $FINAL_OUTPUT_DIR..." | tee -a "$BUILD_LOG_FILE"
+    log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Starting gn generation..." | tee -a "$BUILD_LOG_FILE"
+    log_info "   GN ARGS to be applied: $GN_ARGS_STRING_WITH_TARGETS" | tee -a "$BUILD_LOG_FILE"
+    log_info "   Target output directory for gn: $FINAL_OUTPUT_DIR" | tee -a "$BUILD_LOG_FILE"
+
+    gn gen "$FINAL_OUTPUT_DIR" --args="$GN_ARGS_STRING_WITH_TARGETS" 2>&1 | tee -a "$BUILD_LOG_FILE"
+    local GN_GEN_STATUS=${PIPESTATUS[0]}
+    if [ "$GN_GEN_STATUS" -ne 0 ]; then
+        log_error "❌ gn gen failed with status $GN_GEN_STATUS." | tee -a "$BUILD_LOG_FILE"
+        exit 1
+    fi
+    log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished gn generation." | tee -a "$BUILD_LOG_FILE"
+
+    log_info "📋 Build configuration for $FINAL_OUTPUT_DIR (from gn args $FINAL_OUTPUT_DIR --list --short):" | tee -a "$BUILD_LOG_FILE"
+    gn args "$FINAL_OUTPUT_DIR" --list --short 2>&1 | tee -a "$BUILD_LOG_FILE"
+}
+
+# Executes the main build process using autoninja.
+# Logs ccache statistics before and after the build.
+execute_build() {
+    log_info "--- Executing Build ---"
+    local BASE_BUILD_HOURS=8
+    if [[ -n "$HENSURF_BASE_BUILD_HOURS" && "$HENSURF_BASE_BUILD_HOURS" =~ ^[0-9]+([.][0-9]+)?$ && $(echo "$HENSURF_BASE_BUILD_HOURS > 0" | bc -l) -eq 1 ]]; then
+        BASE_BUILD_HOURS=$HENSURF_BASE_BUILD_HOURS
+        log_info "ℹ️ Using HENSURF_BASE_BUILD_HOURS=$HENSURF_BASE_BUILD_HOURS for estimation." | tee -a "$BUILD_LOG_FILE"
+    fi
+
+    local ESTIMATED_HOURS
+    ESTIMATED_HOURS=$(awk -v base="$BASE_BUILD_HOURS" -v cores="$CPU_CORES" 'BEGIN { printf "%.1f", base / cores }')
+    if (( $(echo "$ESTIMATED_HOURS < 0.5" | bc -l) )); then ESTIMATED_HOURS="<30 minutes";
+    elif (( $(echo "$ESTIMATED_HOURS < 1" | bc -l) )); then ESTIMATED_HOURS="<1 hour";
+    else ESTIMATED_HOURS=$(printf "%.0f hours" "$ESTIMATED_HOURS"); fi
+
+    log_info "" | tee -a "$BUILD_LOG_FILE"
+    log_info "🚀 Starting HenSurf build..." | tee -a "$BUILD_LOG_FILE"
+    log_info "📊 System info:" | tee -a "$BUILD_LOG_FILE"
+    log_info "   CPU cores: $CPU_CORES" | tee -a "$BUILD_LOG_FILE"
+    log_info "   Memory: ${MEMORY_GB}GB" | tee -a "$BUILD_LOG_FILE"
+    log_info "   Estimated time: ~${ESTIMATED_HOURS} (This is a VERY ROUGH estimate.)" | tee -a "$BUILD_LOG_FILE"
+    log_info "" | tee -a "$BUILD_LOG_FILE"
+    log_info "⏳ This will take a while. You can monitor progress in another terminal with:" | tee -a "$BUILD_LOG_FILE"
+    log_info "   tail -f \"$BUILD_LOG_FILE\"" | tee -a "$BUILD_LOG_FILE"
+    log_info "" | tee -a "$BUILD_LOG_FILE"
+
+    if command_exists "ccache"; then
+        log_info "Initial ccache statistics before main build:" | tee -a "$BUILD_LOG_FILE"
+        ccache -s 2>&1 | tee -a "$BUILD_LOG_FILE"
+    fi
+
+    log_info "🔨 Building HenSurf browser (chrome target) in $FINAL_OUTPUT_DIR..." | tee -a "$BUILD_LOG_FILE"
+    log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Starting main browser build (autoninja -C \"$FINAL_OUTPUT_DIR\" chrome)..." | tee -a "$BUILD_LOG_FILE"
+    log_info "Ninja will now show detailed build progress (e.g., [X/Y] files compiled)..." | tee -a "$BUILD_LOG_FILE"
+
+    autoninja -C "$FINAL_OUTPUT_DIR" chrome 2>&1 | tee -a "$BUILD_LOG_FILE"
+    local CHROME_BUILD_STATUS=${PIPESTATUS[0]}
+    if [ "$CHROME_BUILD_STATUS" -ne 0 ]; then
+        log_error "❌ autoninja chrome build failed with status $CHROME_BUILD_STATUS." | tee -a "$BUILD_LOG_FILE"
+        exit 1
+    fi
+    log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished main browser build." | tee -a "$BUILD_LOG_FILE"
+
+    if command_exists "ccache"; then
+        log_info "Final ccache statistics after main browser build:" | tee -a "$BUILD_LOG_FILE"
+        ccache -s 2>&1 | tee -a "$BUILD_LOG_FILE"
+    fi
+}
+
+
+# --- Main Script Logic ---
+
+main() {
+    setup_environment_variables "$@" # Pass all script args for potential use
+
+    # Check if Chromium source exists
+    if [ ! -d "$CHROMIUM_SRC_DIR" ]; then
+        log_error "❌ Chromium source not found at $CHROMIUM_SRC_DIR. Please run ./scripts/fetch-chromium.sh first." | tee -a "$BUILD_LOG_FILE"
+        exit 1
+    fi
+    log_success "✅ Chromium source directory found: $CHROMIUM_SRC_DIR" | tee -a "$BUILD_LOG_FILE"
+
+    # Check if essential HenSurf config exists
+    if [ ! -f "$PROJECT_ROOT/config/hensurf.gn" ]; then
+        log_error "❌ HenSurf base configuration (config/hensurf.gn) not found. Please run ./scripts/apply-patches.sh or ensure config is in place." | tee -a "$BUILD_LOG_FILE"
+        exit 1
+    fi
+    log_success "✅ HenSurf base configuration (config/hensurf.gn) found." | tee -a "$BUILD_LOG_FILE"
+
+    # Depot Tools Setup
+    local DEPOT_TOOLS_DIR
+    DEPOT_TOOLS_DIR=$(get_depot_tools_dir "$PROJECT_ROOT")
+    if [ -z "$DEPOT_TOOLS_DIR" ]; then
+        log_error "Failed to determine depot_tools directory path. Exiting." | tee -a "$BUILD_LOG_FILE"; exit 1;
+    fi
+    if ! add_depot_tools_to_path "$DEPOT_TOOLS_DIR"; then
+        log_error "Failed to add depot_tools to PATH. Exiting." | tee -a "$BUILD_LOG_FILE"; exit 1;
+    fi
+
+    # Configure ccache
+    export CCACHE_CPP2=true
+    export CCACHE_SLOPPINESS="time_macros"
+    if [ -n "$CCACHE_DIR" ]; then log_info "ℹ️ Using custom CCACHE_DIR: $CCACHE_DIR" | tee -a "$BUILD_LOG_FILE"; fi
+    if ! command_exists "ccache"; then
+        log_warn "⚠️ ccache command not found. Build will proceed without ccache." | tee -a "$BUILD_LOG_FILE"
+    else
+        log_success "✅ ccache found: $(command -v ccache)" | tee -a "$BUILD_LOG_FILE"
+    fi
+
+    # Navigate to the chromium source directory
+    safe_cd "$CHROMIUM_SRC_DIR" # Using safe_cd from utils.sh
+    # log_info is already part of safe_cd on success
+
+    check_system_requirements # Uses and sets MEMORY_GB, CPU_CORES
+
+    # Pass all script arguments to configure_gn_arguments
+    configure_gn_arguments "$@"
+
+    run_gn_gen
+
+    execute_build
+    build_additional_components
+    package_macos_bundle # This function will internally check if it needs to run
+    summarize_build_artifacts
+}
+
+# Builds additional components like chromedriver and mini_installer based on flags and target OS.
+build_additional_components() {
+    log_info "--- Building Additional Components ---"
+    local EXE_SUFFIX=""
+    [[ "$FINAL_TARGET_OS" == "win" ]] && EXE_SUFFIX=".exe"
+
+    # Build chromedriver
+    if [ "$BUILD_CHROMEDRIVER" = true ]; then
+        log_info "🔨 Building chromedriver in $FINAL_OUTPUT_DIR..." | tee -a "$BUILD_LOG_FILE"
+        if [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/chromedriver$EXE_SUFFIX" ]; then
+            log_info "ℹ️ chromedriver artifact already exists. Skipping build." | tee -a "$BUILD_LOG_FILE"
+        else
+            log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Starting chromedriver build..." | tee -a "$BUILD_LOG_FILE"
+            autoninja -C "$FINAL_OUTPUT_DIR" chromedriver 2>&1 | tee -a "$BUILD_LOG_FILE"
+            local STATUS=${PIPESTATUS[0]}
+            if [[ $STATUS -ne 0 ]]; then
+                log_warn "⚠️ chromedriver failed to build (code $STATUS). Continuing." | tee -a "$BUILD_LOG_FILE"
+            else
+                log_success "✅ chromedriver built successfully." | tee -a "$BUILD_LOG_FILE"
+            fi
+            log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished chromedriver build." | tee -a "$BUILD_LOG_FILE"
+        fi
+    else
+        log_info "ℹ️ Skipping chromedriver build (--skip-chromedriver)." | tee -a "$BUILD_LOG_FILE"
+    fi
+
+    # Build mini_installer (OS-specific handling)
+    if [ "$BUILD_MINI_INSTALLER" = true ]; then
+        if [[ "$FINAL_TARGET_OS" == "mac" ]]; then
+            log_info "📦 Building macOS mini_installer..." | tee -a "$BUILD_LOG_FILE"
+            if [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.dmg" ] || [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/mini_installer.dmg" ]; then
+                log_info "ℹ️ macOS installer (HenSurf.dmg or mini_installer.dmg) already exists. Skipping." | tee -a "$BUILD_LOG_FILE"
+            else
+                log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Starting macOS mini_installer build..." | tee -a "$BUILD_LOG_FILE"
+                autoninja -C "$FINAL_OUTPUT_DIR" mini_installer 2>&1 | tee -a "$BUILD_LOG_FILE"
+                local STATUS=${PIPESTATUS[0]}
+                if [[ $STATUS -ne 0 ]]; then
+                    log_warn "⚠️ macOS mini_installer failed (code $STATUS). Continuing." | tee -a "$BUILD_LOG_FILE"
+                else
+                    log_success "✅ macOS mini_installer built successfully." | tee -a "$BUILD_LOG_FILE"
+                fi
+                log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished macOS mini_installer build." | tee -a "$BUILD_LOG_FILE"
+            fi
+        elif [[ "$FINAL_TARGET_OS" == "win" ]]; then
+            log_info "📦 Building Windows mini_installer..." | tee -a "$BUILD_LOG_FILE"
+            if [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/mini_installer.exe" ] || [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/setup.exe" ]; then
+                 log_info "ℹ️ Windows installer (mini_installer.exe or setup.exe) already exists. Skipping." | tee -a "$BUILD_LOG_FILE"
+            else
+                log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Starting Windows mini_installer build..." | tee -a "$BUILD_LOG_FILE"
+                autoninja -C "$FINAL_OUTPUT_DIR" mini_installer 2>&1 | tee -a "$BUILD_LOG_FILE"
+                local STATUS=${PIPESTATUS[0]}
+                if [[ $STATUS -ne 0 ]]; then
+                    log_warn "⚠️ Windows mini_installer failed (code $STATUS). Continuing." | tee -a "$BUILD_LOG_FILE"
+                else
+                    log_success "✅ Windows mini_installer built successfully." | tee -a "$BUILD_LOG_FILE"
+                fi
+                log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished Windows mini_installer build." | tee -a "$BUILD_LOG_FILE"
+            fi
+            # Verify installer presence after attempt
+            if [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/mini_installer.exe" ]; then
+                log_success "✅ Windows mini_installer.exe found." | tee -a "$BUILD_LOG_FILE"
+            elif [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/setup.exe" ]; then
+                log_success "✅ Windows setup.exe found." | tee -a "$BUILD_LOG_FILE"
+            else
+                log_warn "⚠️ Windows installer not found after build attempt." | tee -a "$BUILD_LOG_FILE"
+            fi
+        else
+            log_info "ℹ️ No mini_installer build step for $FINAL_TARGET_OS." | tee -a "$BUILD_LOG_FILE"
+        fi
+    else
+        log_info "ℹ️ Skipping mini_installer build (--skip-mini-installer)." | tee -a "$BUILD_LOG_FILE"
+    fi
+}
+
+# Creates the .app bundle for macOS, including Info.plist modifications.
+# This function should only be called when FINAL_TARGET_OS is "mac".
+package_macos_bundle() {
+    if [[ "$FINAL_TARGET_OS" != "mac" ]]; then
+        log_info "ℹ️ Skipping macOS bundle creation (target OS is $FINAL_TARGET_OS, not mac)."
+        return 0
+    fi
+
+    log_info "--- Packaging macOS Application Bundle ---"
     if [ -d "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.app" ]; then
-        log_info "HenSurf.app already exists in $FINAL_OUTPUT_DIR. Removing before creating a new one." | tee -a "$BUILD_LOG_FILE"
+        log_info "HenSurf.app already exists. Removing before creating a new one." | tee -a "$BUILD_LOG_FILE"
         rm -rf "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.app"
     fi
 
-    # Determine the name of the app generated by Chromium build (usually Chromium.app or Google Chrome.app)
-    # For is_chrome_branded=false (likely for HenSurf), it's Chromium.app
-    EXPECTED_CHROMIUM_APP_NAME="Chromium.app"
-
-    APP_COPIED=false
+    local EXPECTED_CHROMIUM_APP_NAME="Chromium.app" # Default for is_chrome_branded=false
+    local APP_COPIED=false
     if [ -d "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/${EXPECTED_CHROMIUM_APP_NAME}" ]; then
-        log_info "Found ${EXPECTED_CHROMIUM_APP_NAME} in $FINAL_OUTPUT_DIR, copying to HenSurf.app..." | tee -a "$BUILD_LOG_FILE"
+        log_info "Found ${EXPECTED_CHROMIUM_APP_NAME}, copying to HenSurf.app..." | tee -a "$BUILD_LOG_FILE"
         cp -R "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/${EXPECTED_CHROMIUM_APP_NAME}" "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.app"
         APP_COPIED=true
     else
-        # Fallback for other potential names if necessary, or error out
-        log_warn "⚠️ Could not find ${EXPECTED_CHROMIUM_APP_NAME} in $FINAL_OUTPUT_DIR. Trying other common names..." | tee -a "$BUILD_LOG_FILE"
-        # Example: if it could be Google Chrome.app
-        # if [ -d "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/Google Chrome.app" ]; then
-        #    EXPECTED_CHROMIUM_APP_NAME="Google Chrome.app"
-        #    cp -R "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/${EXPECTED_CHROMIUM_APP_NAME}" "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.app"
-        #    APP_COPIED=true
-        # fi
+        log_warn "⚠️ Could not find ${EXPECTED_CHROMIUM_APP_NAME} in $FINAL_OUTPUT_DIR to create HenSurf.app." | tee -a "$BUILD_LOG_FILE"
+        return 1 # Indicate failure
     fi
 
     if [ "$APP_COPIED" = true ] && [ -d "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.app" ]; then
-        PLIST_BUDDY="/usr/libexec/PlistBuddy" # Standard macOS utility
-        INFO_PLIST="$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.app/Contents/Info.plist"
+        local PLIST_BUDDY="/usr/libexec/PlistBuddy"
+        local INFO_PLIST="$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.app/Contents/Info.plist"
+        # These should ideally be sourced from a version file or configuration
+        local TARGET_MACOS_MIN_VERSION="10.15"
+        local HENSURF_VERSION_STR="1.0.0-dev"
+        local HENSURF_BUILD_NUMBER_STR="1"
 
-        # These values should ideally come from a centralized configuration (e.g. hensurf.gn or a version file)
-        TARGET_MACOS_MIN_VERSION="10.15" # Example, ensure this matches Chromium's capabilities
-        HENSURF_VERSION_STR="1.0.0" # Example
-        HENSURF_BUILD_NUMBER_STR="1" # Example
-
-        # Check if PlistBuddy is available (it should be on macOS host)
-        # The actual modification of Info.plist should ideally happen on a macOS host.
-        # If cross-compiling, this step might be skipped or handled differently.
+        # PlistBuddy is a macOS specific tool. This check ensures it runs only on a macOS host.
+        # The FINAL_TARGET_OS check above ensures we only ATTEMPT this for mac builds.
+        # This inner check is for whether the HOST is capable.
         if command_exists "$PLIST_BUDDY" && [ -f "$INFO_PLIST" ]; then
             log_info "Updating Info.plist at: $INFO_PLIST" | tee -a "$BUILD_LOG_FILE"
-            # Set common bundle properties
-            "$PLIST_BUDDY" -c "Set :CFBundleName HenSurf" "$INFO_PLIST" >/dev/null 2>&1 || log_warn "Warning: Failed to set CFBundleName" | tee -a "$BUILD_LOG_FILE"
-            "$PLIST_BUDDY" -c "Set :CFBundleDisplayName HenSurf Browser" "$INFO_PLIST" >/dev/null 2>&1 || log_warn "Warning: Failed to set CFBundleDisplayName" | tee -a "$BUILD_LOG_FILE"
-            "$PLIST_BUDDY" -c "Set :CFBundleIdentifier com.hensurf.browser" "$INFO_PLIST" >/dev/null 2>&1 || log_warn "Warning: Failed to set CFBundleIdentifier" | tee -a "$BUILD_LOG_FILE"
-            "$PLIST_BUDDY" -c "Set :CFBundleShortVersionString $HENSURF_VERSION_STR" "$INFO_PLIST" >/dev/null 2>&1 || log_warn "Warning: Failed to set CFBundleShortVersionString" | tee -a "$BUILD_LOG_FILE"
-            "$PLIST_BUDDY" -c "Set :CFBundleVersion $HENSURF_BUILD_NUMBER_STR" "$INFO_PLIST" >/dev/null 2>&1 || log_warn "Warning: Failed to set CFBundleVersion" | tee -a "$BUILD_LOG_FILE"
-            "$PLIST_BUDDY" -c "Set :LSMinimumSystemVersion $TARGET_MACOS_MIN_VERSION" "$INFO_PLIST" >/dev/null 2>&1 || log_warn "Warning: Failed to set LSMinimumSystemVersion" | tee -a "$BUILD_LOG_FILE"
-            # Assuming app.icns is copied from a branding package or default location
-            # "$PLIST_BUDDY" -c "Set :CFBundleIconFile app.icns" "$INFO_PLIST" >/dev/null 2>&1 || log_warn "Warning: Failed to set CFBundleIconFile" | tee -a "$BUILD_LOG_FILE"
-            log_success "✅ HenSurf.app bundle created and Info.plist configured successfully in $FINAL_OUTPUT_DIR!" | tee -a "$BUILD_LOG_FILE"
+            "$PLIST_BUDDY" -c "Set :CFBundleName HenSurf" "$INFO_PLIST" >/dev/null 2>&1 || log_warn "Warn: Failed to set CFBundleName" | tee -a "$BUILD_LOG_FILE"
+            "$PLIST_BUDDY" -c "Set :CFBundleDisplayName HenSurf Browser" "$INFO_PLIST" >/dev/null 2>&1 || log_warn "Warn: Failed to set CFBundleDisplayName" | tee -a "$BUILD_LOG_FILE"
+            "$PLIST_BUDDY" -c "Set :CFBundleIdentifier com.hensurf.browser" "$INFO_PLIST" >/dev/null 2>&1 || log_warn "Warn: Failed to set CFBundleIdentifier" | tee -a "$BUILD_LOG_FILE"
+            "$PLIST_BUDDY" -c "Set :CFBundleShortVersionString '$HENSURF_VERSION_STR'" "$INFO_PLIST" >/dev/null 2>&1 || log_warn "Warn: Failed to set CFBundleShortVersionString" | tee -a "$BUILD_LOG_FILE"
+            "$PLIST_BUDDY" -c "Set :CFBundleVersion '$HENSURF_BUILD_NUMBER_STR'" "$INFO_PLIST" >/dev/null 2>&1 || log_warn "Warn: Failed to set CFBundleVersion" | tee -a "$BUILD_LOG_FILE"
+            "$PLIST_BUDDY" -c "Set :LSMinimumSystemVersion '$TARGET_MACOS_MIN_VERSION'" "$INFO_PLIST" >/dev/null 2>&1 || log_warn "Warn: Failed to set LSMinimumSystemVersion" | tee -a "$BUILD_LOG_FILE"
+            # TODO: Add icon file configuration if an app.icns is available
+            # "$PLIST_BUDDY" -c "Set :CFBundleIconFile app.icns" "$INFO_PLIST"
+            log_success "✅ HenSurf.app bundle Info.plist configured." | tee -a "$BUILD_LOG_FILE"
         else
-            if [[ "$HOST_OS_TYPE" == "mac" ]]; then # Only warn if on macOS host and it failed
-                 log_warn "⚠️  PlistBuddy tool ($PLIST_BUDDY) not found, or Info.plist ($INFO_PLIST) missing. Cannot customize app bundle." | tee -a "$BUILD_LOG_FILE"
+            if [[ "$(_get_os_type_internal)" == "macos" ]]; then # Host is macOS but PlistBuddy failed
+                 log_warn "⚠️ PlistBuddy tool not found or Info.plist missing. Cannot customize app bundle on macOS host." | tee -a "$BUILD_LOG_FILE"
+            else # Host is not macOS, so this is expected
+                 log_info "ℹ️ Skipping Info.plist customization (PlistBuddy tool typically only available on macOS host)." | tee -a "$BUILD_LOG_FILE"
+            fi
+        fi
+    else
+        log_warn "⚠️ HenSurf.app was not successfully copied. Skipping Info.plist configuration." | tee -a "$BUILD_LOG_FILE"
+        return 1 # Indicate failure
+    fi
+    log_success "✅ macOS application bundle created successfully."
+}
+
+# Logs the location of build artifacts and provides instructions to run HenSurf.
+summarize_build_artifacts() {
+    log_info "--- Build Summary ---"
+    local EXE_SUFFIX=""
+    [[ "$FINAL_TARGET_OS" == "win" ]] && EXE_SUFFIX=".exe"
+
+    log_success "🎉 HenSurf build for $FINAL_TARGET_OS-$FINAL_TARGET_CPU completed successfully!" | tee -a "$BUILD_LOG_FILE"
+    log_info "📍 Build artifacts location (relative to $CHROMIUM_SRC_DIR):" | tee -a "$BUILD_LOG_FILE"
+    log_info "   Main executable: $FINAL_OUTPUT_DIR/chrome${EXE_SUFFIX}" | tee -a "$BUILD_LOG_FILE"
+
+    if [ "$BUILD_CHROMEDRIVER" = true ] && [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/chromedriver${EXE_SUFFIX}" ]; then
+        log_info "   ChromeDriver:    $FINAL_OUTPUT_DIR/chromedriver${EXE_SUFFIX}" | tee -a "$BUILD_LOG_FILE"
+    fi
+
+    if [[ "$FINAL_TARGET_OS" == "mac" ]]; then
+        if [ -d "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.app" ]; then
+            log_info "   macOS App Bundle: $FINAL_OUTPUT_DIR/HenSurf.app" | tee -a "$BUILD_LOG_FILE"
+        fi
+        if [ "$BUILD_MINI_INSTALLER" = true ]; then
+            if [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.dmg" ]; then
+                 log_info "   macOS Installer:  $FINAL_OUTPUT_DIR/HenSurf.dmg" | tee -a "$BUILD_LOG_FILE"
+            elif [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/mini_installer.dmg" ]; then
+                 log_info "   macOS Installer:  $FINAL_OUTPUT_DIR/mini_installer.dmg" | tee -a "$BUILD_LOG_FILE"
             else
-                 log_info "ℹ️  Skipping Info.plist customization (PlistBuddy typically only available on macOS host)." | tee -a "$BUILD_LOG_FILE"
+                 log_info "   (macOS installer not found at expected paths)" | tee -a "$BUILD_LOG_FILE"
             fi
         fi
-    else
-        log_warn "⚠️  Could not find or copy the base app bundle '${EXPECTED_CHROMIUM_APP_NAME}' in $CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR to create HenSurf.app." | tee -a "$BUILD_LOG_FILE"
-    fi
-
-    if [ "$BUILD_MINI_INSTALLER" = true ]; then
-        if [ -f "$DMG_CHECK_FILE" ]; then
-            log_info "ℹ️ macOS installer artifact ($DMG_CHECK_FILE) already exists in $FINAL_OUTPUT_DIR. Skipping build." | tee -a "$BUILD_LOG_FILE"
-        else
-            log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Starting optional component build: macOS mini_installer..." | tee -a "$BUILD_LOG_FILE"
-            autoninja -C "$FINAL_OUTPUT_DIR" mini_installer 2>&1 | tee -a "$BUILD_LOG_FILE"
-            MINI_INSTALLER_MACOS_BUILD_STATUS=${PIPESTATUS[0]}
-            if [[ $MINI_INSTALLER_MACOS_BUILD_STATUS -ne 0 ]]; then
-                log_warn "⚠️ Optional component macOS mini_installer failed to build (exit code $MINI_INSTALLER_MACOS_BUILD_STATUS) in $FINAL_OUTPUT_DIR. Continuing." | tee -a "$BUILD_LOG_FILE"
+    elif [[ "$FINAL_TARGET_OS" == "win" ]]; then
+        if [ "$BUILD_MINI_INSTALLER" = true ]; then
+            if [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/mini_installer.exe" ]; then
+                log_info "   Windows Installer: $FINAL_OUTPUT_DIR/mini_installer.exe" | tee -a "$BUILD_LOG_FILE"
+            elif [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/setup.exe" ]; then
+                log_info "   Windows Installer: $FINAL_OUTPUT_DIR/setup.exe" | tee -a "$BUILD_LOG_FILE"
             else
-                log_success "✅ Optional component macOS mini_installer built successfully in $FINAL_OUTPUT_DIR." | tee -a "$BUILD_LOG_FILE"
-            fi
-            log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished optional component build: macOS mini_installer." | tee -a "$BUILD_LOG_FILE"
-        fi
-    else
-        log_info "ℹ️ Skipping macOS installer build as per --skip-mini-installer flag." | tee -a "$BUILD_LOG_FILE"
-    fi
-
-# This section is for Windows target builds
-elif [[ "$FINAL_TARGET_OS" == "win" ]]; then
-    if [ "$BUILD_MINI_INSTALLER" = true ]; then
-        log_info "📦 Building Windows installer (mini_installer) in $FINAL_OUTPUT_DIR..." | tee -a "$BUILD_LOG_FILE"
-        if [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/mini_installer.exe" ] || [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/setup.exe" ]; then # Common names for installer
-             log_info "ℹ️ Windows installer artifact already exists in $FINAL_OUTPUT_DIR. Skipping build." | tee -a "$BUILD_LOG_FILE"
-        else
-            log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Starting optional component build: Windows mini_installer..." | tee -a "$BUILD_LOG_FILE"
-            autoninja -C "$FINAL_OUTPUT_DIR" mini_installer 2>&1 | tee -a "$BUILD_LOG_FILE"
-            MINI_INSTALLER_WIN_BUILD_STATUS=${PIPESTATUS[0]}
-            if [[ $MINI_INSTALLER_WIN_BUILD_STATUS -ne 0 ]]; then
-                log_warn "⚠️ Optional component Windows mini_installer failed to build (exit code $MINI_INSTALLER_WIN_BUILD_STATUS) in $FINAL_OUTPUT_DIR. Continuing." | tee -a "$BUILD_LOG_FILE"
-            else
-                log_success "✅ Optional component Windows mini_installer built successfully in $FINAL_OUTPUT_DIR." | tee -a "$BUILD_LOG_FILE"
-            fi
-            log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished optional component build: Windows mini_installer." | tee -a "$BUILD_LOG_FILE"
-        fi
-        # Check for common installer names after build attempt
-        if [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/mini_installer.exe" ]; then
-            log_success "✅ Windows mini_installer.exe found in $FINAL_OUTPUT_DIR." | tee -a "$BUILD_LOG_FILE"
-        elif [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/setup.exe" ]; then # Chromium often names it setup.exe
-            log_success "✅ Windows setup.exe found in $FINAL_OUTPUT_DIR." | tee -a "$BUILD_LOG_FILE"
-        else
-             # This warning is valid if the build was attempted and expected to succeed
-            log_warn "⚠️  Windows installer (mini_installer.exe or setup.exe) not found in $CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR after build attempt." | tee -a "$BUILD_LOG_FILE"
-        fi
-    else
-        log_info "ℹ️ Skipping Windows installer build as per --skip-mini-installer flag." | tee -a "$BUILD_LOG_FILE"
-    fi
-fi
-
-log_info "" | tee -a "$BUILD_LOG_FILE"
-log_success "🎉 HenSurf build for $FINAL_TARGET_OS-$FINAL_TARGET_CPU completed successfully!" | tee -a "$BUILD_LOG_FILE"
-log_info "" | tee -a "$BUILD_LOG_FILE"
-log_info "📍 Build artifacts location (relative to $CHROMIUM_SRC_DIR):" | tee -a "$BUILD_LOG_FILE"
-log_info "   Main executable: $FINAL_OUTPUT_DIR/chrome${EXE_SUFFIX}" | tee -a "$BUILD_LOG_FILE"
-
-if [ "$BUILD_CHROMEDRIVER" = true ] && [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/chromedriver${EXE_SUFFIX}" ]; then
-    log_info "   ChromeDriver:    $FINAL_OUTPUT_DIR/chromedriver${EXE_SUFFIX}" | tee -a "$BUILD_LOG_FILE"
-fi
-
-# Use FINAL_TARGET_OS for these checks
-if [[ "$FINAL_TARGET_OS" == "mac" ]]; then
-    if [ -d "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.app" ]; then
-        log_info "   macOS App Bundle: $FINAL_OUTPUT_DIR/HenSurf.app" | tee -a "$BUILD_LOG_FILE"
-    fi
-    if [ "$BUILD_MINI_INSTALLER" = true ]; then
-        if [ -f "$DMG_FILE" ]; then
-            log_info "   macOS Installer:  $(basename "$DMG_FILE") (in $FINAL_OUTPUT_DIR/)" | tee -a "$BUILD_LOG_FILE"
-        elif [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.dmg" ]; then # Check for specific name if generic one not found
-             log_info "   macOS Installer:  HenSurf.dmg (in $FINAL_OUTPUT_DIR/)" | tee -a "$BUILD_LOG_FILE"
-        fi
-    fi
-elif [[ "$FINAL_TARGET_OS" == "win" ]]; then
-    if [ "$BUILD_MINI_INSTALLER" = true ]; then
-        if [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/mini_installer.exe" ]; then
-            log_info "   Windows Installer: $FINAL_OUTPUT_DIR/mini_installer.exe" | tee -a "$BUILD_LOG_FILE"
-        elif [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/setup.exe" ]; then # Chromium often names it setup.exe
-            log_info "   Windows Installer: $FINAL_OUTPUT_DIR/setup.exe" | tee -a "$BUILD_LOG_FILE"
-        else
-            if [ -f "$WIN_INSTALLER_FILE" ]; then
-                 log_info "   Windows Installer: $(basename "$WIN_INSTALLER_FILE") (in $FINAL_OUTPUT_DIR/)" | tee -a "$BUILD_LOG_FILE"
+                log_info "   (Windows installer not found at expected paths)" | tee -a "$BUILD_LOG_FILE"
             fi
         fi
     fi
-fi
-log_info "   Build log: $BUILD_LOG_FILE" | tee -a "$BUILD_LOG_FILE"
-log_info "" | tee -a "$BUILD_LOG_FILE"
-log_info "🚀 To run HenSurf (from $CHROMIUM_SRC_DIR directory):" | tee -a "$BUILD_LOG_FILE"
+    log_info "   Build log: $BUILD_LOG_FILE" | tee -a "$BUILD_LOG_FILE"
+    log_info "" | tee -a "$BUILD_LOG_FILE"
+    log_info "🚀 To run HenSurf (from $CHROMIUM_SRC_DIR directory):" | tee -a "$BUILD_LOG_FILE"
 
-# Use FINAL_TARGET_OS for run instructions
-if [[ "$FINAL_TARGET_OS" == "mac" ]]; then
-    if [ -d "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.app" ]; then
-        log_info "   open $FINAL_OUTPUT_DIR/HenSurf.app" | tee -a "$BUILD_LOG_FILE"
-    else
-        log_info "   ./$FINAL_OUTPUT_DIR/chrome  (App bundle creation failed or was skipped)" | tee -a "$BUILD_LOG_FILE"
+    if [[ "$FINAL_TARGET_OS" == "mac" ]]; then
+        if [ -d "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.app" ]; then
+            log_info "   open $FINAL_OUTPUT_DIR/HenSurf.app" | tee -a "$BUILD_LOG_FILE"
+        else
+            log_info "   ./$FINAL_OUTPUT_DIR/chrome  (App bundle failed/skipped)" | tee -a "$BUILD_LOG_FILE"
+        fi
+    elif [[ "$FINAL_TARGET_OS" == "win" ]]; then
+        log_info "   ./$FINAL_OUTPUT_DIR/chrome${EXE_SUFFIX}" | tee -a "$BUILD_LOG_FILE"
+    else # Linux or other
+        log_info "   ./$FINAL_OUTPUT_DIR/chrome" | tee -a "$BUILD_LOG_FILE"
     fi
-elif [[ "$FINAL_TARGET_OS" == "win" ]]; then
-    log_info "   ./$FINAL_OUTPUT_DIR/chrome${EXE_SUFFIX}" | tee -a "$BUILD_LOG_FILE"
-else # Assuming Linux or other POSIX-like
-    log_info "   ./$FINAL_OUTPUT_DIR/chrome" | tee -a "$BUILD_LOG_FILE"
-fi
-log_info "" | tee -a "$BUILD_LOG_FILE"
-log_info "📋 HenSurf features:" | tee -a "$BUILD_LOG_FILE"
-log_info "   ✅ No AI-powered suggestions" | tee -a "$BUILD_LOG_FILE"
-log_info "   ✅ No Google services integration" | tee -a "$BUILD_LOG_FILE"
-log_info "   ✅ DuckDuckGo as default search" | tee -a "$BUILD_LOG_FILE"
-log_info "   ✅ Enhanced privacy settings" | tee -a "$BUILD_LOG_FILE"
-log_info "   ✅ Minimal telemetry" | tee -a "$BUILD_LOG_FILE"
-log_info "   ✅ Clean, bloatware-free interface" | tee -a "$BUILD_LOG_FILE"
+    log_info "" | tee -a "$BUILD_LOG_FILE"
+    log_info "📋 HenSurf features:" | tee -a "$BUILD_LOG_FILE"
+    log_info "   ✅ No AI-powered suggestions" | tee -a "$BUILD_LOG_FILE"
+    log_info "   ✅ No Google services integration" | tee -a "$BUILD_LOG_FILE"
+    log_info "   ✅ DuckDuckGo as default search" | tee -a "$BUILD_LOG_FILE"
+    log_info "   ✅ Enhanced privacy settings" | tee -a "$BUILD_LOG_FILE"
+    log_info "   ✅ Minimal telemetry" | tee -a "$BUILD_LOG_FILE"
+    log_info "   ✅ Clean, bloatware-free interface" | tee -a "$BUILD_LOG_FILE"
+}
+
+# Call main function with all script arguments
+main "$@"

@@ -3,18 +3,65 @@ name: ShellCheck
 on:
   push:
     branches: [ main ]
+    paths:
+      - '**.sh'
   pull_request:
     branches: [ main ]
+    paths:
+      - '**.sh'
+
+# Cancel in-progress runs for the same workflow and ref
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint_shell_scripts:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # To checkout the repository
+      # No other permissions typically needed for linting
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    - name: Install shellcheck
+
+    - name: Get shellcheck path
+      id: shellcheck_path
+      run: echo "path=$(which shellcheck || true)" >> $GITHUB_OUTPUT
+
+    - name: Cache shellcheck binary
+      id: cache-shellcheck
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.shellcheck_path.outputs.path }}
+        key: ${{ runner.os }}-shellcheck-${{ hashFiles(steps.shellcheck_path.outputs.path) }} # Cache based on path and binary hash if possible, or just OS-shellcheck
+        restore-keys: |
+          ${{ runner.os }}-shellcheck-
+
+    - name: Install shellcheck if not cached
+      if: steps.cache-shellcheck.outputs.cache-hit != 'true' || steps.shellcheck_path.outputs.path == ''
       run: |
         sudo apt-get update
         sudo apt-get install -y shellcheck
+        echo "SHELLCHECK_INSTALLED_PATH=$(which shellcheck)" >> $GITHUB_ENV
+    - name: Use installed shellcheck path if just installed
+      id: set_installed_shellcheck_path
+      if: steps.cache-shellcheck.outputs.cache-hit != 'true' || steps.shellcheck_path.outputs.path == ''
+      run: echo "shellcheck_exec_path=${{ env.SHELLCHECK_INSTALLED_PATH }}" >> $GITHUB_OUTPUT
+    - name: Use cached shellcheck path
+      id: set_cached_shellcheck_path
+      if: steps.cache-shellcheck.outputs.cache-hit == 'true' && steps.shellcheck_path.outputs.path != ''
+      run: echo "shellcheck_exec_path=${{ steps.shellcheck_path.outputs.path }}" >> $GITHUB_OUTPUT
+
     - name: Run shellcheck
-      run: shellcheck scripts/*.sh
+      run: |
+        SHELLCHECK_TO_RUN="${{ steps.set_installed_shellcheck_path.outputs.shellcheck_exec_path || steps.set_cached_shellcheck_path.outputs.shellcheck_exec_path }}"
+        if [ -z "$SHELLCHECK_TO_RUN" ]; then
+          echo "Error: Shellcheck executable path could not be determined."
+          exit 1
+        fi
+        echo "Using shellcheck at: $SHELLCHECK_TO_RUN"
+        # Use git ls-files to find all .sh files tracked by git, or stick to scripts/*.sh if preferred
+        git ls-files '*.sh' | xargs "$SHELLCHECK_TO_RUN" -P scripts # -P to follow sourced files in 'scripts' dir
+        # Alternatively, to only check scripts in the scripts/ directory:
+        # $SHELLCHECK_TO_RUN scripts/*.sh

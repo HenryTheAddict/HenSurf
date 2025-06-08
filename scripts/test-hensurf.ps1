@@ -3,6 +3,53 @@
 
 $ErrorActionPreference = "Stop" # Exit on error, similar to set -e
 
+# Initialize test counters
+$TotalTests = 0
+$TestsPassed = 0
+$TestsFailed = 0
+$GlobalFailureOccurred = $false # Flag to track if any test fails, for final exit code
+
+# Helper function for consistent test execution and reporting
+function Invoke-HenSurfTest {
+    param(
+        [string]$TestName,
+        [string]$Url,
+        [string]$OutputHtmlFile,
+        [string]$UserDataDir,
+        [string]$Keyword,
+        [int]$TimeoutSeconds = 15,
+        [int]$VirtualTimeBudget = 2000,
+        [string]$PreCommand # Optional command to run before the main test command
+    )
+
+    Write-Host "🚀 Test $($TotalTests + 1): $TestName..."
+    $Global:TotalTests++
+    $TestSuccess = $false
+
+    try {
+        if (-not [string]::IsNullOrWhiteSpace($PreCommand)) {
+            Invoke-Expression $PreCommand
+        }
+
+        Get-HenSurfDom -Url $Url -OutputHtmlFile $OutputHtmlFile -UserDataDir $UserDataDir -TimeoutSeconds $TimeoutSeconds -VirtualTimeBudget $VirtualTimeBudget
+
+        if (Get-Content $OutputHtmlFile -Raw | Select-String -Pattern $Keyword -Quiet -CaseSensitive:$false) {
+            Write-Host "✅ $TestName passed (found keyword '$Keyword')"
+            $Global:TestsPassed++
+            $TestSuccess = $true
+        } else {
+            Throw "$TestName content check failed (keyword '$Keyword' not found)."
+        }
+    } catch {
+        Write-Warning "❌ $TestName failed: $($_.Exception.Message)"
+        if (Test-Path $OutputHtmlFile) { Write-Host "Output for $TestName :"; Get-Content $OutputHtmlFile -Raw | Write-Host }
+        $Global:TestsFailed++
+        $Global:GlobalFailureOccurred = $true
+    }
+    return $TestSuccess
+}
+
+
 Write-Host "🧪 Testing HenSurf Browser (PowerShell)..."
 
 # Determine paths
@@ -234,23 +281,46 @@ try {
 
     # --- Test 9: Performance test (Simple Startup Time) ---
     Write-Host "⚡ Test 9: Performance test (Simple Startup Time)..."
-    $PerfTestArgs = @(
-        "--user-data-dir=`"$GlobalTestDir`"",
-        "--no-first-run",
-        "--headless",
-        "--dump-dom",
-        "--virtual-time-budget=1000", # Keep this budget small for a startup-like test
-        "`"data:text/html,<html><body>Performance Test</body></html>`""
-    )
+    $CurrentTestName = "Performance Test"
+    $TotalTests++
     try {
+        $PerfTestArgs = @(
+            "--user-data-dir=`"$GlobalTestDir`"",
+            "--no-first-run",
+            "--headless",
+            "--dump-dom",
+            "--virtual-time-budget=1000", # Keep this budget small for a startup-like test
+            "`"data:text/html,<html><body>Performance Test</body></html>`""
+        )
         $Measurement = Measure-Command {
-            # Redirect output to null as we only care about time
-            Start-Process -FilePath $HenSurfExe -ArgumentList $PerfTestArgs -NoNewWindow -Wait -RedirectStandardOutput $null -RedirectStandardError $null
+            $PerfProcess = Start-Process -FilePath $HenSurfExe -ArgumentList $PerfTestArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput $null -RedirectStandardError $null
+            if ($PerfProcess.ExitCode -ne 0) {
+                Throw "Process exited with code $($PerfProcess.ExitCode)"
+            }
         }
-        Write-Host "✅ Performance test (simple startup) completed in $($Measurement.TotalMilliseconds)ms"
+        Write-Host "✅ $CurrentTestName completed in $($Measurement.TotalMilliseconds)ms"
+        $TestsPassed++
     } catch {
-        Write-Error "❌ Performance test failed: $($_.Exception.Message)"
+        Write-Warning "❌ $CurrentTestName failed: $($_.Exception.Message)"
+        $TestsFailed++
+        $GlobalFailureOccurred = $true
     }
+
+    # --- New Test Cases ---
+
+    # Test 10: Bookmarks Page
+    $BookmarksFile = Join-Path -Path $GlobalTestDir -ChildPath "bookmarks_page.html"
+    Invoke-HenSurfTest -TestName "Bookmarks Page" -Url "chrome://bookmarks/" -OutputHtmlFile $BookmarksFile -UserDataDir $GlobalTestDir -Keyword "Bookmarks|Organize"
+
+    # Test 11: History Page
+    $HistoryPrereqFile = Join-Path -Path $GlobalTestDir -ChildPath "history_prereq.html"
+    $HistoryFile = Join-Path -Path $GlobalTestDir -ChildPath "history_page.html"
+    $PreCommandHistory = { Get-HenSurfDom -Url "data:text/html,VisitedPageForHistory" -OutputHtmlFile $HistoryPrereqFile -UserDataDir $GlobalTestDir -VirtualTimeBudget 500 }
+    Invoke-HenSurfTest -TestName "History Page" -Url "chrome://history/" -OutputHtmlFile $HistoryFile -UserDataDir $GlobalTestDir -Keyword "History|Clear browsing data" -PreCommand $PreCommandHistory
+
+    # Test 12: Downloads Page
+    $DownloadsFile = Join-Path -Path $GlobalTestDir -ChildPath "downloads_page.html"
+    Invoke-HenSurfTest -TestName "Downloads Page" -Url "chrome://downloads/" -OutputHtmlFile $DownloadsFile -UserDataDir $GlobalTestDir -Keyword "Downloads|No downloads"
 
 }
 finally {
@@ -261,9 +331,23 @@ finally {
     }
 }
 
+# --- Summary ---
 Write-Host ""
-Write-Host "🎉 HenSurf PowerShell testing completed!"
-# Add a summary similar to the bash script if desired
+Write-Host "--- Test Summary ---"
+Write-Host "Total tests run: $TotalTests"
+if ($TestsFailed -eq 0) {
+    Write-Host -ForegroundColor Green "Tests PASSED: $TestsPassed"
+    Write-Host -ForegroundColor Green "Tests FAILED: 0"
+    Write-Host ""
+    Write-Host -ForegroundColor Green "🎉 All HenSurf PowerShell tests passed successfully!"
+} else {
+    Write-Host -ForegroundColor Green "Tests PASSED: $TestsPassed"
+    Write-Host -ForegroundColor Red "Tests FAILED: $TestsFailed"
+    Write-Host ""
+    Write-Error "❌ Some PowerShell tests failed. HenSurf Browser may not be fully functional."
+}
+Write-Host "--------------------"
+Write-Host ""
 
 Write-Host "🚀 To run HenSurf (Windows):"
 Write-Host "   & `"$HenSurfExe`""
@@ -271,4 +355,9 @@ Write-Host ""
 Write-Host "For more testing options:"
 Write-Host "   & `"$HenSurfExe`" --help"
 
+if ($GlobalFailureOccurred) {
+    exit 1
+} else {
+    exit 0
+}
 # End of script

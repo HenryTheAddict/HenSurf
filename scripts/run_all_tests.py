@@ -13,7 +13,9 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
 HENSURF_SRC_DIR = os.path.join(PROJECT_ROOT, 'chromium', 'src')
-HENSURF_OUT_DIR_DEFAULT = os.path.join(HENSURF_SRC_DIR, 'out', 'HenSurf')
+HENSURF_OUT_DIR_DEFAULT = os.path.join(
+    HENSURF_SRC_DIR, 'out', 'HenSurf'
+)
 
 # Path to mock depot_tools and other tools for the sandbox environment
 MOCK_TOOLS_DIR = os.path.join(PROJECT_ROOT, 'tmp_mocks')
@@ -21,8 +23,10 @@ MOCK_TOOLS_DIR = os.path.join(PROJECT_ROOT, 'tmp_mocks')
 def get_env_with_mock_tools():
     """Returns a modified environment dictionary with mock tools in PATH."""
     env = os.environ.copy()
-    env['PATH'] = MOCK_TOOLS_DIR + os.pathsep + env.get('PATH', '')
-    # Add depot_tools_mock if it contains other necessary tools like gclient (though not used by this script directly)
+    current_path = env.get('PATH', '')
+    env['PATH'] = MOCK_TOOLS_DIR + os.pathsep + current_path
+    # Add depot_tools_mock if it contains other necessary tools like gclient
+    # (though not used by this script directly)
     depot_tools_mock_dir = os.path.join(PROJECT_ROOT, 'depot_tools_mock')
     env['PATH'] = depot_tools_mock_dir + os.pathsep + env['PATH']
     return env
@@ -34,8 +38,10 @@ def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None, check
         # unless we need to specifically add mock tools to PATH.
         process_env = env if env else os.environ.copy()
 
-        process = subprocess.run(cmd_list, cwd=working_dir, capture_output=True, text=True,
-                                 timeout=timeout_seconds, env=process_env, check=False) # check=False to handle manually
+        process = subprocess.run(
+            cmd_list, cwd=working_dir, capture_output=True, text=True,
+            timeout=timeout_seconds, env=process_env, check=False
+        ) # check=False to handle manually
 
         stdout_lines = process.stdout.splitlines()
         stderr_lines = process.stderr.splitlines()
@@ -53,13 +59,18 @@ def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None, check
             print(f"Command FAILED with exit code {process.returncode}.")
             return False
         else:
-            # If not checking exit code, or if exit code is 0, consider it a logical success for this function
+            # If not checking exit code, or if exit code is 0,
+            # consider it a logical success for this function
             print(f"Command finished with exit code {process.returncode}.")
-            return True # For build steps, even a non-zero might be okay if we want to see test results
-                       # but for tests themselves, non-zero is a failure.
-                       # The caller should decide. For now, this function just reports execution.
-                       # Let's refine: True if returncode is 0, False otherwise if check_exit_code is True.
-                       # If check_exit_code is False, always return True (command ran).
+            return True # For build steps, even a non-zero might be okay
+                       # if we want to see test results but for tests
+                       # themselves, non-zero is a failure. The caller
+                       # should decide. For now, this function just
+                       # reports execution.
+                       # Let's refine: True if returncode is 0, False
+                       # otherwise if check_exit_code is True.
+                       # If check_exit_code is False, always return True
+                       # (command ran).
             # Refined logic:
             if check_exit_code:
                 if process.returncode == 0:
@@ -78,16 +89,44 @@ def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None, check
         return False
 
 def main():
-    parser = argparse.ArgumentParser(description="HenSurf Cross-Platform Test Runner")
-    parser.add_argument('--platform', default=platform.system().lower(), choices=['linux', 'windows', 'darwin'], help="OS platform (default: auto-detected)")
-    parser.add_argument('--output-dir', default=HENSURF_OUT_DIR_DEFAULT, help="Chromium output directory (e.g., out/HenSurf)")
-    parser.add_argument('--skip-custom-scripts', action='store_true', help="Skip running test-hensurf.sh/ps1")
-    parser.add_argument('--build-chromium-tests', nargs='*', metavar='TARGET', help="List of Chromium test suites/targets to build (e.g., browser_tests unit_tests)")
-    parser.add_argument('--run-chromium-tests', nargs='*', metavar='SUITE[:FILTER]', help="List of Chromium test suites to run, with optional gtest_filter (e.g., browser_tests:BrowserTest.Sanity)")
-    parser.add_argument('--gtest_filter', help="Global gtest_filter for all --run-chromium-tests suites if not specified per suite")
-    parser.add_argument('--no-sandbox', action='store_true', help="Add --no-sandbox to Chromium test runs")
-    parser.add_argument('--test-launcher-timeout', type=int, default=600, help="Timeout in seconds for test launcher commands.")
-
+    desc = "Test Runner"
+    parser = argparse.ArgumentParser(description=desc)
+    parser.add_argument(
+        '--platform', default=platform.system().lower(),
+        choices=['linux', 'windows', 'darwin'],
+        help="OS platform (default: auto-detected)"
+    )
+    parser.add_argument(
+        '--output-dir', default=HENSURF_OUT_DIR_DEFAULT,
+        help="Chromium output directory (e.g., out/HenSurf)"
+    )
+    parser.add_argument(
+        '--skip-custom-scripts', action='store_true',
+        help="Skip running test-hensurf.sh/ps1"
+    )
+    parser.add_argument(
+        '--build-chromium-tests', nargs='*', metavar='TARGET',
+        help="List of Chromium test suites/targets to build "
+             "(e.g., browser_tests unit_tests)"
+    )
+    parser.add_argument(
+        '--run-chromium-tests', nargs='*', metavar='SUITE[:FILTER]',
+        help="List of Chromium test suites to run, with optional gtest_filter "
+             "(e.g., browser_tests:BrowserTest.Sanity)"
+    )
+    parser.add_argument(
+        '--gtest_filter',
+        help="Global gtest_filter for all --run-chromium-tests suites "
+             "if not specified per suite"
+    )
+    parser.add_argument(
+        '--no-sandbox', action='store_true',
+        help="Add --no-sandbox to Chromium test runs"
+    )
+    parser.add_argument(
+        '--test-launcher-timeout', type=int, default=600,
+        help="Timeout in seconds for test launcher commands."
+    )
 
     args = parser.parse_args()
     print(f"Running tests for platform: {args.platform}")
@@ -120,11 +159,18 @@ def main():
             cmd = ['bash', custom_script_path]
         elif args.platform == 'windows':
             custom_script_path = os.path.join(script_dir, 'test-hensurf.ps1')
-            cmd = ['powershell.exe', '-ExecutionPolicy', 'Bypass', '-File', custom_script_path]
+            cmd = [
+                'powershell.exe', '-ExecutionPolicy', 'Bypass',
+                '-File', custom_script_path
+            ]
 
         if cmd and os.path.exists(custom_script_path):
-            # Custom scripts are run from the project root, as they might have relative paths like `chromium/src/...`
-            success = run_command(cmd, working_dir=PROJECT_ROOT, timeout_seconds=args.test_launcher_timeout, env=mock_env)
+            # Custom scripts are run from the project root,
+            # as they might have relative paths like `chromium/src/...`
+            success = run_command(
+                cmd, working_dir=PROJECT_ROOT,
+                timeout_seconds=args.test_launcher_timeout, env=mock_env
+            )
             results['custom_tests'] = success
             if not success: overall_success = False
         else:
@@ -140,7 +186,10 @@ def main():
         for suite in args.build_chromium_tests:
             print(f"Building: {suite}")
             build_cmd = ['autoninja', '-C', args.output_dir, suite]
-            success = run_command(build_cmd, working_dir=HENSURF_SRC_DIR, env=mock_env) # autoninja needs to run from src
+            # autoninja needs to run from src
+            success = run_command(
+                build_cmd, working_dir=HENSURF_SRC_DIR, env=mock_env
+            )
             results[f'build_{suite}'] = success
             if not success:
                 print(f"Stopping early because build of {suite} failed.")
@@ -161,8 +210,13 @@ def main():
                 executable_path += ".exe"
 
             if not os.path.exists(executable_path):
-                print(f"Test executable not found: {executable_path}. Skipping {suite}.")
-                results[f'run_{suite}_{specific_gtest_filter or "all"}'] = False
+                print(
+                    f"Test executable not found: {executable_path}. "
+                    f"Skipping {suite}."
+                )
+                filter_str = specific_gtest_filter or "all"
+                result_key = "_".join(['run', suite, filter_str])
+                results[result_key] = False
                 overall_success = False
                 continue
 
@@ -172,26 +226,42 @@ def main():
 
             # Common flags for Chromium tests
             test_cmd.append('--test-launcher-bot-mode')
-            test_cmd.append(f'--test-launcher-timeout={args.test_launcher_timeout * 1000}') # ms for test_launcher_timeout
+            # ms for test_launcher_timeout
+            test_cmd.append(
+                f'--test-launcher-timeout={args.test_launcher_timeout * 1000}'
+            )
             if args.no_sandbox:
                 test_cmd.append('--no-sandbox')
 
             final_run_cmd = []
-            if args.platform == 'linux' and suite not in ['unit_tests', 'base_unittests']: # unit_tests usually don't need X display
+            if args.platform == 'linux' and suite not in ['unit_tests', 'base_unittests']:
+                # unit_tests usually don't need X display
                 # Check if xvfb-run is available
-                xvfb_check_process = subprocess.run(['which', 'xvfb-run'], capture_output=True, text=True, env=mock_env)
+                xvfb_check_process = subprocess.run(
+                    ['which', 'xvfb-run'], capture_output=True, text=True,
+                    env=mock_env
+                )
                 if xvfb_check_process.returncode == 0:
                     final_run_cmd.extend(['xvfb-run', '-a']) # Auto-servernum
                     final_run_cmd.extend(test_cmd)
                 else:
-                    print("xvfb-run not found, attempting to run test without it. May fail if UI is needed.")
+                    print(
+                        "xvfb-run not found, attempting to run test without it. "
+                        "May fail if UI is needed."
+                    )
                     final_run_cmd.extend(test_cmd)
             else:
                 final_run_cmd.extend(test_cmd)
 
-            # Tests are run from src dir typically, as they might load resources relative to it or out/
-            success = run_command(final_run_cmd, working_dir=HENSURF_SRC_DIR, timeout_seconds=args.test_launcher_timeout + 60, env=mock_env)
-            results[f'run_{suite}_{specific_gtest_filter or "all"}'] = success
+            # Tests are run from src dir typically, as they might load
+            # resources relative to it or out/
+            success = run_command(
+                final_run_cmd, working_dir=HENSURF_SRC_DIR,
+                timeout_seconds=args.test_launcher_timeout + 60, env=mock_env
+            )
+            filter_str = specific_gtest_filter or "all"
+            result_key = "_".join(['run', suite, filter_str])
+            results[result_key] = success
             if not success: overall_success = False
     else:
         print("\n--- Skipping Run of Chromium Test Suites ---")
@@ -208,7 +278,7 @@ def main():
     if overall_success and results: # Ensure some tests actually ran
         print("\n🎉 All executed tests passed!")
         sys.exit(0)
-    elif not results: # No tests ran, not a failure but not a success either
+    elif not results: # No tests ran, not a failure but not a success
         sys.exit(0)
     else:
         print("\n⚠️ Some tests failed.")

@@ -96,41 +96,15 @@ jobs:
         working-directory: ${{ github.workspace }}/chromium
         run: |
           set -e
-          echo "Running gclient runhooks..."
-          gclient runhooks -j1 # Use -j1 for single-threaded execution to avoid potential resource exhaustion/race conditions
-          echo "gclient runhooks completed."
-          # Verify gn executable exists after runhooks
-          GN_EXECUTABLE="${{ github.workspace }}/chromium/src/buildtools/linux64/gn/gn"
           if [ -f "$GN_EXECUTABLE" ]; then
             echo "✅ gn executable found at $GN_EXECUTABLE."
           else
             echo "⚠️ gn executable NOT found at $GN_EXECUTABLE after gclient runhooks."
-            echo "Attempting to locate gn in depot_tools..."
-            DEPOT_TOOLS_GN_PATH="${{ env.DEPOT_TOOLS_DIR }}/gn" # gn is usually at the root of depot_tools for Linux
-            # Check if the depot_tools gn exists and is executable
-            if [ -f "$DEPOT_TOOLS_GN_PATH" ] && [ -x "$DEPOT_TOOLS_GN_PATH" ]; then
-              echo "Found gn in depot_tools at $DEPOT_TOOLS_GN_PATH."
-              # Define the target directory
-              TARGET_GN_DIR="${{ github.workspace }}/chromium/src/buildtools/linux64/gn"
-              # Create the target directory if it doesn't exist
               mkdir -p "$TARGET_GN_DIR"
               echo "Copying gn from $DEPOT_TOOLS_GN_PATH to $TARGET_GN_DIR/gn..."
               cp "$DEPOT_TOOLS_GN_PATH" "$TARGET_GN_DIR/gn"
               if [ -f "$TARGET_GN_DIR/gn" ]; then
                 echo "✅ Successfully copied gn to $TARGET_GN_DIR/gn."
-                # Ensure it's executable
-                chmod +x "$TARGET_GN_DIR/gn"
-              else
-                echo "❌ Failed to copy gn from depot_tools."
-                echo "Proceeding without gn in the expected chromium location might lead to errors."
-                # Optionally, exit 1 here if gn is absolutely critical and copying failed
-                # exit 1
-              fi
-            else
-              echo "❌ gn not found in depot_tools at $DEPOT_TOOLS_GN_PATH or it's not executable."
-              echo "Proceeding without gn in the expected chromium location might lead to errors."
-              # Optionally, exit 1 here
-              # exit 1
             fi
           fi
 

@@ -97,12 +97,6 @@ jobs:
         echo "Configuring gclient..."
         gclient config --spec 'solutions = [{"name": "src", "url": "https://chromium.googlesource.com/chromium/src.git", "managed": False}]'
 
-        echo "Running gclient sync -D -j1..." # Added -j1
-        gclient sync -D -j1
-
-        echo "Running gclient runhooks -j1 explicitly..." # Added explicit runhooks
-        gclient runhooks -j1
-        echo "gclient runhooks completed."
 
         # Verify gn executable exists
         GN_EXECUTABLE="${{ github.workspace }}/chromium/src/buildtools/linux64/gn/gn"
@@ -112,12 +106,6 @@ jobs:
           echo "✅ gn executable found at $GN_EXECUTABLE."
         else
           echo "⚠️ gn executable NOT found at $GN_EXECUTABLE after gclient sync/runhooks."
-          echo "Listing contents of ${{ github.workspace }}/chromium/src/buildtools/linux64/ to check if gn directory was created:"
-          ls -la "${{ github.workspace }}/chromium/src/buildtools/linux64/"
-          echo "Listing contents of ${{ github.workspace }}/chromium/src/buildtools/ to see available OS dirs:"
-          ls -la "${{ github.workspace }}/chromium/src/buildtools/"
-
-          # Check if the buildtools README exists, which might indicate partial success of tool fetching
           if [ -f "$EXPECTED_GN_PATH_README" ]; then
             echo "ℹ️ Found buildtools README: $EXPECTED_GN_PATH_README. buildtools downloaded some content."
           else
@@ -138,11 +126,6 @@ jobs:
               chmod +x "$TARGET_GN_DIR/gn"
             else
               echo "❌ Failed to copy gn from depot_tools to $TARGET_GN_DIR/gn."
-              # exit 1 # Decide if this should be a fatal error for CodeQL
-            fi
-          else
-            echo "❌ gn not found in depot_tools at $DEPOT_TOOLS_GN_PATH or it's not executable."
-            # exit 1 # Decide if this should be a fatal error for CodeQL
           fi
         fi
 

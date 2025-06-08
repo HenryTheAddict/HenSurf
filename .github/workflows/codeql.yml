@@ -85,12 +85,11 @@ jobs:
         /third_party/abseil-cpp/
         /tools/
         EOF
-        DEPS_FILE=$(find ${{ github.workspace }}/hensurf -name DEPS -print -quit)
-        if [ -z "$DEPS_FILE" ]; then echo "Error: Could not find DEPS file within the hensurf checkout." && exit 1; fi
-        CHROMIUM_COMMIT_HASH=$(grep -oP "(?<=Var\('chromium_version'\): ')([a-f0-9]{40})(?=')" "$DEPS_FILE")
-        if [ -z "$CHROMIUM_COMMIT_HASH" ]; then echo "Error: Could not extract 'chromium_version' from $DEPS_FILE." && exit 1; fi
-        git fetch --depth=1 origin $CHROMIUM_COMMIT_HASH
-        git checkout $CHROMIUM_COMMIT_HASH
+        LATEST_TAG_REF=$(git ls-remote --tags --sort="-v:refname" https://chromium.googlesource.com/chromium/src.git | grep -oP 'refs/tags/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+        if [ -z "$LATEST_TAG_REF" ]; then echo "Error: Could not determine latest stable Chromium tag." && exit 1; fi
+        echo "Fetching latest stable tag reference: $LATEST_TAG_REF"
+        git fetch --depth=1 origin "$LATEST_TAG_REF"
+        git checkout FETCH_HEAD
 
     - name: Sync GClient DEPS and Runhooks
       working-directory: ${{ github.workspace }}/chromium
@@ -104,11 +103,9 @@ jobs:
       working-directory: ${{ github.workspace }}/chromium/src
       run: |
         set -e
-        PATCH_SCRIPT=$(find ${{ github.workspace }}/hensurf -type f -name "apply-patches.sh" -print -quit)
-        if [ -z "$PATCH_SCRIPT" ]; then echo "Error: Could not find apply-patches.sh script within the hensurf checkout." && exit 1; fi
-        chmod +x "$PATCH_SCRIPT"
+        chmod +x ${{ github.workspace }}/hensurf/scripts/apply-patches.sh
         CHROMIUM_SRC_DIR="${{ github.workspace }}/chromium/src" \
-        bash "$PATCH_SCRIPT" --no-fetch
+        bash ${{ github.workspace }}/hensurf/scripts/apply-patches.sh --no-fetch
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3

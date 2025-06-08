@@ -85,8 +85,10 @@ jobs:
         /third_party/abseil-cpp/
         /tools/
         EOF
-        CHROMIUM_COMMIT_HASH=$(grep -oP "(?<=Var\('chromium_version'\): ')([a-f0-9]{40})(?=')" ${{ github.workspace }}/hensurf/DEPS)
-        if [ -z "$CHROMIUM_COMMIT_HASH" ]; then echo "Error: Could not extract 'chromium_version' from DEPS file." && exit 1; fi
+        DEPS_FILE=$(find ${{ github.workspace }}/hensurf -name DEPS -print -quit)
+        if [ -z "$DEPS_FILE" ]; then echo "Error: Could not find DEPS file within the hensurf checkout." && exit 1; fi
+        CHROMIUM_COMMIT_HASH=$(grep -oP "(?<=Var\('chromium_version'\): ')([a-f0-9]{40})(?=')" "$DEPS_FILE")
+        if [ -z "$CHROMIUM_COMMIT_HASH" ]; then echo "Error: Could not extract 'chromium_version' from $DEPS_FILE." && exit 1; fi
         git fetch --depth=1 origin $CHROMIUM_COMMIT_HASH
         git checkout $CHROMIUM_COMMIT_HASH
 
@@ -101,9 +103,12 @@ jobs:
     - name: Apply HenSurf Patches
       working-directory: ${{ github.workspace }}/chromium/src
       run: |
-        chmod +x ${{ github.workspace }}/hensurf/scripts/apply-patches.sh
+        set -e
+        PATCH_SCRIPT=$(find ${{ github.workspace }}/hensurf -type f -name "apply-patches.sh" -print -quit)
+        if [ -z "$PATCH_SCRIPT" ]; then echo "Error: Could not find apply-patches.sh script within the hensurf checkout." && exit 1; fi
+        chmod +x "$PATCH_SCRIPT"
         CHROMIUM_SRC_DIR="${{ github.workspace }}/chromium/src" \
-        bash ${{ github.workspace }}/hensurf/scripts/apply-patches.sh --no-fetch
+        bash "$PATCH_SCRIPT" --no-fetch
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3

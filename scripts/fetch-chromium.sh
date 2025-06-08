@@ -7,19 +7,82 @@ set -e
 
 echo "🌐 Fetching Chromium source code for HenSurf..."
 
-# Check if depot_tools exists
-if [ ! -d "../depot_tools" ]; then
-    echo "❌ depot_tools not found. Please run ./scripts/install-deps.sh first."
+# Determine script and project paths
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." &>/dev/null && pwd)
+
+# Try to find depot_tools, assuming it's adjacent to the project root
+# This matches the structure set up by install-deps.sh
+DEPOT_TOOLS_DIR_GUESS_1="$PROJECT_ROOT/../depot_tools"
+# Fallback if it's inside the project root (less common for chromium builds)
+DEPOT_TOOLS_DIR_GUESS_2="$PROJECT_ROOT/depot_tools"
+
+DEPOT_TOOLS_DIR=""
+if [ -d "$DEPOT_TOOLS_DIR_GUESS_1" ]; then
+    DEPOT_TOOLS_DIR=$(cd "$DEPOT_TOOLS_DIR_GUESS_1" &>/dev/null && pwd) # Get absolute path
+elif [ -d "$DEPOT_TOOLS_DIR_GUESS_2" ]; then
+    DEPOT_TOOLS_DIR=$(cd "$DEPOT_TOOLS_DIR_GUESS_2" &>/dev/null && pwd) # Get absolute path
+else
+    echo "❌ depot_tools not found in expected locations:"
+    echo "   Expected: $DEPOT_TOOLS_DIR_GUESS_1"
+    echo "   Or:       $DEPOT_TOOLS_DIR_GUESS_2"
+    echo "   Please ensure depot_tools is cloned correctly (usually adjacent to the HenSurf project directory)."
+    echo "   And that you have run ./scripts/install-deps.sh first."
     exit 1
 fi
 
-# Add depot_tools to PATH
-export PATH="$PWD/../depot_tools:$PATH"
+echo "Found depot_tools at: $DEPOT_TOOLS_DIR"
+export PATH="$DEPOT_TOOLS_DIR:$PATH"
+echo "🔧 Added depot_tools to PATH for this session."
 
-# Check available disk space (need at least 100GB)
-AVAILABLE_SPACE=$(df -h . | awk 'NR==2 {print $4}' | sed 's/G//')
-if [ "$AVAILABLE_SPACE" -lt 100 ]; then
-    echo "⚠️  Warning: Less than 100GB available. Chromium source requires ~100GB."
+# Check available disk space
+MIN_DISK_SPACE_GB=100
+AVAILABLE_SPACE_GB=0
+
+if [[ "$OSTYPE" == "darwin"* ]] || [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    # Attempt to get free space in GB directly. -B G ensures output is in GB.
+    # The awk command extracts the 4th field (Available) from the 2nd line.
+    # sed removes the 'G' suffix.
+    AVAILABLE_SPACE_GB=$(df -BG . | awk 'NR==2 {print $4}' | sed 's/G//' | tr -d '[:space:]')
+    echo "Disk space check (Linux/macOS): ${AVAILABLE_SPACE_GB}GB available."
+elif [[ "$OSTYPE" == "cygwin"* ]] || [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
+    echo "💻 Checking disk space on Windows..."
+    CURRENT_DRIVE_LETTER=$(pwd -W | cut -d':' -f1)
+    if ! command -v wmic &> /dev/null; then
+        echo "⚠️ 'wmic' command not found. Cannot check disk space accurately on Windows."
+        echo "   Please ensure at least ${MIN_DISK_SPACE_GB}GB is available on drive ${CURRENT_DRIVE_LETTER}:"
+        # Set to a value that allows proceeding but shows warning or prompts user.
+        # Or, conservatively, set to 0 to always trigger manual confirmation if wmic fails.
+        AVAILABLE_SPACE_GB=0
+    else
+        # wmic output can have trailing carriage returns or extra spaces.
+        # tr -d '\r' removes carriage returns.
+        # grep FreeSpace ensures we only get that line.
+        # cut -d'=' -f2 gets the value after '='.
+        AVAILABLE_BYTES_STR=$(wmic logicaldisk where "DeviceID='${CURRENT_DRIVE_LETTER}:'" get FreeSpace /value | tr -d '\r' | grep FreeSpace | cut -d'=' -f2)
+        if [[ -z "$AVAILABLE_BYTES_STR" || ! "$AVAILABLE_BYTES_STR" =~ ^[0-9]+$ ]]; then
+             echo "⚠️ Could not determine free space using wmic for drive ${CURRENT_DRIVE_LETTER}: (Output: '$AVAILABLE_BYTES_STR')."
+             AVAILABLE_SPACE_GB=0 # Assume not enough if value is weird
+        else
+            # Using awk for floating point division as bc might not be available by default in Git Bash
+            # awk can handle large numbers. Result is rounded to nearest integer.
+            AVAILABLE_SPACE_GB=$(awk -v bytes="$AVAILABLE_BYTES_STR" 'BEGIN { printf "%.0f", bytes / 1024 / 1024 / 1024 }')
+        fi
+    fi
+    echo "Drive ${CURRENT_DRIVE_LETTER}: has approximately ${AVAILABLE_SPACE_GB}GB free."
+else
+    echo "⚠️ Unsupported OS for disk space check: $OSTYPE. Assuming ${MIN_DISK_SPACE_GB}GB available."
+    AVAILABLE_SPACE_GB=${MIN_DISK_SPACE_GB} # Assume enough to proceed, but user should be aware
+fi
+
+# Ensure AVAILABLE_SPACE_GB is a number, default to 0 if not (e.g. df output was weird)
+if ! [[ "$AVAILABLE_SPACE_GB" =~ ^[0-9]+$ ]]; then
+    echo "⚠️ Could not reliably determine available disk space. Detected: '$AVAILABLE_SPACE_GB'."
+    AVAILABLE_SPACE_GB=0
+fi
+
+if [ "$AVAILABLE_SPACE_GB" -lt "$MIN_DISK_SPACE_GB" ]; then
+    echo "⚠️  Warning: Only ${AVAILABLE_SPACE_GB}GB detected as available. Chromium source requires at least ${MIN_DISK_SPACE_GB}GB."
     read -p "Continue anyway? (y/N): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -27,33 +90,48 @@ if [ "$AVAILABLE_SPACE" -lt 100 ]; then
     fi
 fi
 
+# Define HenSurf root and Chromium directory path (relative to HenSurf root)
+HENSURF_ROOT_DIR="$PROJECT_ROOT"
+CHROMIUM_DIR="$HENSURF_ROOT_DIR/chromium"
+
 # Create chromium directory if it doesn't exist
-if [ ! -d "chromium" ]; then
-    echo "📁 Creating chromium directory..."
-    mkdir chromium
+if [ ! -d "$CHROMIUM_DIR" ]; then
+    echo "📁 Creating chromium directory at $CHROMIUM_DIR..."
+    mkdir -p "$CHROMIUM_DIR" # Use -p to create parent dirs if needed, though unlikely here
 fi
 
-cd chromium
+cd "$CHROMIUM_DIR"
+echo "Current directory: $(pwd)"
 
 # Check if .gclient exists (indicates previous fetch)
 if [ -f ".gclient" ]; then
     echo "🔄 Updating existing Chromium source..."
     gclient sync
 else
-    echo "📦 Fetching Chromium source (this will take a while)..."
-    echo "⏳ Expected time: 30-60 minutes depending on internet speed"
+    echo "📦 Fetching Chromium source into $(pwd) (this will take a while)..."
+    echo "⏳ Expected time: 30-60 minutes or more depending on internet speed and machine specs."
     
-    # Fetch Chromium source
+    # Fetch Chromium source. This command creates the 'src' directory inside the current directory.
+    # The .gclient file is also created in the current directory.
     fetch --nohooks chromium
     
-    echo "🔧 Running gclient hooks..."
-    cd src
+    echo "🔧 Running gclient hooks in $(pwd)..."
+    # gclient runhooks should be run in the directory that contains the 'src' directory
+    # and the .gclient file. This is the current directory ($CHROMIUM_DIR).
+    if [ ! -f ".gclient" ]; then
+        echo "❌ .gclient file not found in $(pwd) after fetch. This is unexpected."
+        echo "   Ensure 'fetch --nohooks chromium' completed successfully."
+        exit 1
+    fi
+    if [ ! -d "src" ]; then
+        echo "❌ 'src' directory not found in $(pwd) after fetch. This is unexpected."
+        exit 1
+    fi
     gclient runhooks
-    cd ..
 fi
 
-echo "✅ Chromium source code ready!"
+echo "✅ Chromium source code ready in $(pwd)/src!"
 echo ""
 echo "Next steps:"
-echo "1. Run ./scripts/apply-patches.sh to apply HenSurf customizations"
-echo "2. Run ./scripts/build.sh to build HenSurf"
+echo "1. Run $HENSURF_ROOT_DIR/scripts/apply-patches.sh to apply HenSurf customizations"
+echo "2. Run $HENSURF_ROOT_DIR/scripts/build.sh to build HenSurf"

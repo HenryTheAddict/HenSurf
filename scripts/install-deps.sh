@@ -44,6 +44,64 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
         echo "✅ Xcode Command Line Tools already installed"
     fi
 
+elif [[ "$OSTYPE" == "cygwin"* ]] || [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
+    echo "💻 Detected Windows"
+
+    # Python
+    echo "🐍 Checking for Python..."
+    PYTHON_CMD=""
+    if command -v python3 &> /dev/null; then
+        PYTHON_CMD="python3"
+    elif command -v python &> /dev/null; then
+        PYTHON_CMD="python"
+    fi
+
+    if [ -z "$PYTHON_CMD" ]; then
+        echo "❌ Python not found. Please install Python 3.8 or newer."
+        echo "   Visit https://www.python.org/downloads/windows/"
+        echo "   Alternatively, using Chocolatey: choco install python"
+        exit 1
+    else
+        # Python version check logic will be handled later by the common check
+        echo "✅ Python command detected ($PYTHON_CMD)."
+    fi
+
+    # Git (assumed if running in Git Bash, but good to mention)
+    echo "🌐 Checking for Git..."
+    if ! command -v git &> /dev/null; then
+        echo "❌ Git not found. Please install Git for Windows."
+        echo "   Visit https://git-scm.com/download/win"
+        echo "   This script requires Git to be in PATH, especially for depot_tools."
+        exit 1
+    else
+        echo "✅ Git found."
+    fi
+
+    # Ninja
+    echo "🥷 Checking for Ninja..."
+    if ! command -v ninja &> /dev/null; then
+        echo "❌ Ninja not found. Please install Ninja."
+        echo "   Using Chocolatey: choco install ninja"
+        echo "   Or download from https://github.com/ninja-build/ninja/releases and add to PATH."
+        # Unlike other checks, for Ninja we might not want to exit immediately,
+        # as depot_tools might fetch its own version.
+        # However, having it pre-installed is generally better.
+        # For now, we'll make it a strong recommendation rather than a hard exit.
+        echo "   Continuing, but build may fail if Ninja is not made available via depot_tools or system PATH."
+    else
+        echo "✅ Ninja found."
+    fi
+
+    # Visual Studio Build Tools
+    echo "🔧 Visual Studio Build Tools:"
+    echo "   Please ensure you have Visual Studio C++ Build Tools installed."
+    echo "   Required: 'Desktop development with C++' workload."
+    echo "   Recommended: Visual Studio 2019 (e.g., v16.11.14+) or Visual Studio 2022."
+    echo "   Chromium's gclient hooks may attempt to manage this if specific environment variables are set (e.g., DEPOT_TOOLS_WIN_TOOLCHAIN=0)."
+    echo "   If you have issues, ensure VS is correctly installed and discoverable by depot_tools."
+    echo "   Press [Enter] to acknowledge and continue."
+    read -r
+
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     echo "🐧 Detected Linux"
     if command -v apt-get &> /dev/null; then
@@ -73,15 +131,28 @@ else
     exit 1
 fi
 
-# Check Python version (common logic for macOS and Linux)
+# Check Python version (common logic for macOS, Linux, and Windows)
 echo "🐍 Checking Python version..."
-PYTHON_CMD=""
-if command -v python3 &> /dev/null; then
-    PYTHON_CMD="python3"
-elif command -v python &> /dev/null; then
-    PYTHON_CMD="python"
-else
-    echo "❌ Python not found. Please install Python 3.8 or newer."
+# PYTHON_CMD should be set by OS-specific block for Windows
+if [[ -z "$PYTHON_CMD" ]]; then # If not set by Windows block, means it's Linux/macOS
+    if command -v python3 &> /dev/null; then
+        PYTHON_CMD="python3"
+    elif command -v python &> /dev/null; then
+        PYTHON_CMD="python"
+    else
+        echo "❌ Python not found. Please install Python 3.8 or newer."
+        # For Windows, specific instructions were already given.
+        if ! ([[ "$OSTYPE" == "cygwin"* ]] || [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]); then
+            echo "   On macOS: brew install python"
+            echo "   On Linux: sudo apt-get install python3 (or equivalent for your distro)"
+        fi
+        exit 1
+    fi
+fi
+
+# Check if PYTHON_CMD is valid
+if ! command -v $PYTHON_CMD &> /dev/null; then
+    echo "❌ Python command '$PYTHON_CMD' not found after OS detection. This is an internal script error."
     exit 1
 fi
 
@@ -120,16 +191,31 @@ else
     echo "✅ depot_tools already exists at $DEPOT_TOOLS_DIR"
 fi
 
+# Setting PATH for depot_tools
+# For Windows (msys/cygwin), the export syntax is fine.
+# If this script were to be a .bat file, this would be 'set PATH=%DEPOT_TOOLS_DIR%;%PATH%'
 export PATH="$DEPOT_TOOLS_DIR:$PATH"
 echo "🔧 Added depot_tools to PATH for this session: $DEPOT_TOOLS_DIR"
-echo "   (Note: This PATH change is only for the current terminal session.)"
 
-echo "✅ All core dependencies installed and depot_tools configured for this session!"
+if [[ "$OSTYPE" == "cygwin"* ]] || [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
+    echo "   (Note: This PATH change is only for the current Git Bash/MSYS session.)"
+    echo "✅ All core dependencies checked for Windows!"
+else
+    echo "   (Note: This PATH change is only for the current terminal session.)"
+    echo "✅ All core dependencies installed and depot_tools configured for this session!"
+fi
+
 echo ""
 echo "Next steps:"
-echo "1. IMPORTANT: Add depot_tools to your shell's startup file (e.g., ~/.bashrc, ~/.zshrc) if you haven't already:"
-echo "   echo 'export PATH=\"$DEPOT_TOOLS_DIR:\$PATH\"' >> ~/.your_shell_rc_file"
-echo "   Then, source the file (e.g., source ~/.bashrc) or open a new terminal."
+if [[ "$OSTYPE" == "cygwin"* ]] || [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
+    echo "1. IMPORTANT: Add depot_tools to your Windows PATH environment variable permanently if you haven't already."
+    echo "   You can do this through 'Environment Variables' settings in Windows, or by using 'setx' command in cmd.exe (e.g., setx PATH \"%PATH%;$DEPOT_TOOLS_DIR\")."
+    echo "   Restart your Git Bash/MSYS terminal after making permanent changes."
+else
+    echo "1. IMPORTANT: Add depot_tools to your shell's startup file (e.g., ~/.bashrc, ~/.zshrc) if you haven't already:"
+    echo "   echo 'export PATH=\"$DEPOT_TOOLS_DIR:\$PATH\"' >> ~/.your_shell_rc_file"
+    echo "   Then, source the file (e.g., source ~/.bashrc) or open a new terminal."
+fi
 echo "2. Run ./scripts/fetch-chromium.sh to download Chromium source (will use depot_tools from PATH)."
 echo "3. Run ./scripts/apply-patches.sh to apply HenSurf customizations."
 echo "4. Run ./scripts/build.sh to build HenSurf."

@@ -74,14 +74,29 @@ cat > "$CHROMIUM_SRC/chrome/app/chrome_exe.ver" << EOF
 EOF
 
 # Update app icon references in BUILD.gn files
-echo "Updating BUILD.gn icon references..."
-if [ -f "$CHROMIUM_SRC/chrome/app/BUILD.gn" ]; then
+# echo "Updating BUILD.gn icon references..." # Section commented out
+# The following section related to modifying chrome/app/BUILD.gn for icon paths
+# has been commented out because:
+# 1. The original sed command `sed -i.bak 's/chromium\/product_logo/chromium\/product_logo/g'` was a no-operation,
+#    replacing a string with itself. It provided no functional change.
+# 2. Chromium typically handles icons by looking for specific filenames (e.g., product_logo_*.png, app.icns, chrome.ico)
+#    within designated theme directories (e.g., chrome/app/theme/chromium/, default_100_percent, etc.).
+#    The rest of this script correctly places the HenSurf icons into these directories with the expected names.
+# 3. If specific BUILD.gn modifications were truly necessary (e.g., to change target names or file paths
+#    if non-standard names/locations were used), a more targeted and accurate sed command or gn edit operation
+#    would be required.
+# As such, directly modifying BUILD.gn with the provided sed command is unnecessary and potentially misleading.
+
+# if [ -f "$CHROMIUM_SRC/chrome/app/BUILD.gn" ]; then
     # Backup original BUILD.gn
-    cp "$CHROMIUM_SRC/chrome/app/BUILD.gn" "$CHROMIUM_SRC/chrome/app/BUILD.gn.backup"
+    # cp "$CHROMIUM_SRC/chrome/app/BUILD.gn" "$CHROMIUM_SRC/chrome/app/BUILD.gn.backup-hensurf-logo-setup" # Changed backup name for clarity
     
     # Update icon references (this is a simplified approach)
-    sed -i.bak 's/chromium\/product_logo/chromium\/product_logo/g' "$CHROMIUM_SRC/chrome/app/BUILD.gn"
-fi
+    # sed -i.bak 's/chromium\/product_logo/chromium\/product_logo/g' "$CHROMIUM_SRC/chrome/app/BUILD.gn"
+    # if [ -f "$CHROMIUM_SRC/chrome/app/BUILD.gn.bak" ]; then # Check if .bak was created by sed
+    #    rm "$CHROMIUM_SRC/chrome/app/BUILD.gn.bak"
+    # fi
+# fi
 
 # Create macOS app icon (ICNS) if on macOS
 if [[ "$OSTYPE" == "darwin"* ]]; then

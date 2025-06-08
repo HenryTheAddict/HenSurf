@@ -23,18 +23,50 @@ log_progress() {
 }
 
 log_with_time "🔧 Starting HenSurf patch application..."
+
+# Check for essential commands
+if ! command -v patch &> /dev/null; then
+    log_with_time "❌ 'patch' command not found. Please install it or ensure it's in your PATH."
+    log_with_time "   On Windows, Git Bash usually includes 'patch'."
+    exit 1
+fi
+log_with_time "✅ 'patch' command found."
+
 log_with_time "Working directory: $(pwd)"
-log_with_time "Available disk space: $(df -h . | tail -1 | awk '{print $4}')"
+
+# OS-specific disk space and initial source size logging
+if [[ "$OSTYPE" == "cygwin"* ]] || [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
+    CURRENT_DRIVE_LETTER_APPLY=$(pwd -W | cut -d':' -f1)
+    if command -v wmic &> /dev/null; then
+        AVAILABLE_BYTES_STR_APPLY=$(wmic logicaldisk where "DeviceID='${CURRENT_DRIVE_LETTER_APPLY}:'" get FreeSpace /value | tr -d '\r' | grep FreeSpace | cut -d'=' -f2)
+        if [[ -n "$AVAILABLE_BYTES_STR_APPLY" && "$AVAILABLE_BYTES_STR_APPLY" =~ ^[0-9]+$ ]]; then
+            AVAILABLE_SPACE_INFO=$(awk -v bytes="$AVAILABLE_BYTES_STR_APPLY" 'BEGIN { printf "%.0f GB", bytes / 1024 / 1024 / 1024 }')
+            log_with_time "Available disk space on drive ${CURRENT_DRIVE_LETTER_APPLY}: $AVAILABLE_SPACE_INFO"
+        else
+            log_with_time "Available disk space on drive ${CURRENT_DRIVE_LETTER_APPLY}: (Could not determine using wmic: '$AVAILABLE_BYTES_STR_APPLY')"
+        fi
+    else
+        log_with_time "Available disk space: ('wmic' not found, cannot check on Windows)"
+    fi
+    # du -sh is slow on Windows, so we skip it or use a very rough estimate if needed.
+    if [ -d "chromium/src" ]; then
+        log_with_time "📁 Chromium source directory found at chromium/src. (Size check skipped on Windows for performance)"
+    fi
+else
+    log_with_time "Available disk space: $(df -h . | tail -1 | awk '{print $4}')"
+    if [ -d "chromium/src" ]; then
+        log_with_time "📁 Chromium source found, size: $(du -sh chromium/src | cut -f1)"
+    fi
+fi
 
 # Check if Chromium source exists
 if [ ! -d "chromium/src" ]; then
-    log_with_time "❌ Chromium source not found. Please run ./scripts/fetch-chromium.sh first."
+    log_with_time "❌ Chromium source not found at $(pwd)/chromium/src. Please run ./scripts/fetch-chromium.sh first."
     exit 1
 fi
 
-log_with_time "📁 Chromium source found, size: $(du -sh chromium/src | cut -f1)"
 cd chromium/src
-log_with_time "📂 Changed to chromium/src directory"
+log_with_time "📂 Changed to chromium/src directory ($(pwd))"
 
 log_with_time "📋 Starting patch application..."
 
@@ -55,7 +87,7 @@ log_progress "AI_REMOVAL"
 
 # Apply bloatware removal patch
 log_with_time "🗑️ Starting bloatware removal..."
-log_file_op "Reading patch" "../../patches/remove-bloatware.patch"
+log_with_time "[PATCH] Reading patch: ../../patches/remove-bloatware.patch" # Replaced log_file_op
 if patch -p1 < ../../patches/remove-bloatware.patch 2>&1 | tee -a "$LOG_FILE"; then
     log_with_time "✅ Bloatware removal patch applied successfully"
 else
@@ -66,7 +98,7 @@ log_progress "BLOATWARE_REMOVAL"
 
 # Apply logo integration patch
 log_with_time "🎨 Starting logo integration..."
-log_file_op "Reading patch" "../../patches/integrate-logo.patch"
+log_with_time "[PATCH] Reading patch: ../../patches/integrate-logo.patch" # Replaced log_file_op
 if patch -p1 < ../../patches/integrate-logo.patch 2>&1 | tee -a "$LOG_FILE"; then
     log_with_time "✅ Logo integration patch applied successfully"
 else
@@ -78,24 +110,24 @@ log_progress "LOGO_INTEGRATION"
 # Copy branding files
 log_with_time "🏷️ Applying HenSurf branding..."
 mkdir -p chrome/app/theme/hensurf
-log_file_op "Creating directory" "chrome/app/theme/hensurf"
+log_with_time "[FILEOP] Creating directory: chrome/app/theme/hensurf" # Replaced log_file_op
 cp ../../branding/BRANDING chrome/app/theme/hensurf/
-log_file_op "Copied" "chrome/app/theme/hensurf/BRANDING"
+log_with_time "[FILEOP] Copied: ../../branding/BRANDING to chrome/app/theme/hensurf/BRANDING" # Replaced log_file_op
 log_with_time "✅ Branding files copied"
 log_progress "BRANDING"
 
 # Create custom build configuration
 log_with_time "⚙️ Setting up build configuration..."
 mkdir -p out/HenSurf
-log_file_op "Creating directory" "out/HenSurf"
+log_with_time "[FILEOP] Creating directory: out/HenSurf" # Replaced log_file_op
 cp ../../config/hensurf.gn out/HenSurf/args.gn
-log_file_op "Copied" "out/HenSurf/args.gn"
+log_with_time "[FILEOP] Copied: ../../config/hensurf.gn to out/HenSurf/args.gn" # Replaced log_file_op
 log_with_time "✅ Build configuration created"
 log_progress "BUILD_CONFIG"
 
 # Modify default search engine
 log_with_time "🔍 Setting DuckDuckGo as default search engine..."
-log_with_time "[FILE] Creating components/search_engines/hensurf_engines.cc"
+log_with_time "[FILE] Creating: components/search_engines/hensurf_engines.cc"
 cat > components/search_engines/hensurf_engines.cc << 'EOF'
 // HenSurf custom search engines
 #include "components/search_engines/search_engines_pref_names.h"
@@ -122,12 +154,12 @@ const PrepopulatedEngine duckduckgo = {
 
 }  // namespace TemplateURLPrepopulateData
 EOF
-log_file_op "Created" "components/search_engines/hensurf_engines.cc"
+log_with_time "[FILEOP] Created: components/search_engines/hensurf_engines.cc" # Replaced log_file_op
 log_progress "SEARCH_ENGINE"
 
 # Disable Google API keys
 log_with_time "🔑 Disabling Google API integration..."
-log_with_time "[FILE] Creating google_apis/google_api_keys.cc"
+log_with_time "[FILE] Creating: google_apis/google_api_keys.cc"
 cat > google_apis/google_api_keys.cc << 'EOF'
 // HenSurf - Disable Google API keys
 #include "google_apis/google_api_keys.h"
@@ -142,7 +174,7 @@ bool HasOAuthConfigured() { return false; }
 
 }  // namespace google_apis
 EOF
-log_file_op "Created" "google_apis/google_api_keys.cc"
+log_with_time "[FILEOP] Created: google_apis/google_api_keys.cc" # Replaced log_file_op
 log_progress "API_DISABLE"
 
 # Remove promotional content
@@ -156,7 +188,7 @@ log_progress "PROMO_REMOVAL"
 
 # Disable crash reporting by default
 log_with_time "💥 Disabling crash reporting..."
-log_with_time "[FILE] Creating components/crash/core/common/crash_key.cc"
+log_with_time "[FILE] Creating: components/crash/core/common/crash_key.cc"
 cat > components/crash/core/common/crash_key.cc << 'EOF'
 // HenSurf - Disable crash reporting
 #include "components/crash/core/common/crash_key.h"
@@ -167,20 +199,24 @@ void ClearCrashKey(const std::string& key) {}
 void SetCrashKeyToInt(const std::string& key, int value) {}
 }  // namespace crash_keys
 EOF
-log_file_op "Created" "components/crash/core/common/crash_key.cc"
+log_with_time "[FILEOP] Created: components/crash/core/common/crash_key.cc" # Replaced log_file_op
 log_progress "CRASH_DISABLE"
 
 # Update version info
 log_with_time "📝 Updating version information..."
-log_file_op "Modifying" "chrome/VERSION"
+log_with_time "[FILEOP] Modifying: chrome/VERSION" # Replaced log_file_op
+# Add -e for sed on macOS for compatibility, but not needed for Git Bash sed.
+# Standard sed (like in Git Bash) doesn't need -e for expressions.
+# Using .bak extension for sed -i for broader compatibility (macOS requires it).
 sed -i.bak 's/PRODUCT_FULLNAME=Chromium/PRODUCT_FULLNAME=HenSurf Browser/' chrome/VERSION
 sed -i.bak 's/PRODUCT_SHORTNAME=Chromium/PRODUCT_SHORTNAME=HenSurf/' chrome/VERSION
+rm -f chrome/VERSION.bak # Clean up backup file
 log_with_time "✅ Version information updated"
 log_progress "VERSION_UPDATE"
 
 # Create HenSurf-specific user agent
 log_with_time "🌐 Customizing user agent..."
-log_with_time "[FILE] Creating components/version_info/hensurf_version_info.cc"
+log_with_time "[FILE] Creating: components/version_info/hensurf_version_info.cc"
 cat > components/version_info/hensurf_version_info.cc << 'EOF'
 #include "components/version_info/version_info.h"
 
@@ -196,7 +232,7 @@ std::string GetProductNameAndVersionForUserAgent() {
 
 }  // namespace version_info
 EOF
-log_file_op "Created" "components/version_info/hensurf_version_info.cc"
+log_with_time "[FILEOP] Created: components/version_info/hensurf_version_info.cc" # Replaced log_file_op
 log_progress "USER_AGENT"
 
 log_with_time "🎨 Setting up HenSurf logo and icons..."
@@ -213,7 +249,12 @@ log_progress "LOGO_SETUP"
 END_TIME=$(date +%s)
 TOTAL_TIME=$((END_TIME - START_TIME))
 log_with_time "✅ All patches applied successfully in ${TOTAL_TIME} seconds!"
-log_with_time "📊 Final disk usage: $(du -sh . | cut -f1)"
+
+if [[ "$OSTYPE" == "cygwin"* ]] || [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
+    log_with_time "📊 Final disk usage of chromium/src: (Size check skipped on Windows for performance)"
+else
+    log_with_time "📊 Final disk usage of chromium/src: $(du -sh . | cut -f1)"
+fi
 
 echo ""
 echo "HenSurf customizations:"

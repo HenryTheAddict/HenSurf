@@ -68,8 +68,7 @@ Building Chromium (and thus HenSurf) on Windows has specific prerequisites and r
 1.  **Open Git Bash:** All subsequent commands should be run in a Git Bash terminal.
 2.  **Clone HenSurf Repository:**
     ```bash
-    # Replace with the actual repository URL if different
-    git clone https://github.com/your-username/hensurf.git
+    git clone https://github.com/HenryTheAddict/HenSurf
     cd hensurf
     ```
 3.  **Install Dependencies & depot_tools:**

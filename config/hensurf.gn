@@ -1,5 +1,4 @@
 # Mock hensurf.gn content
 is_debug = false
-hensurf_build_optimizations = true
 # The line below is important for apply-patches.sh to find and use for icon path
 mac_deployment_target = "10.15"

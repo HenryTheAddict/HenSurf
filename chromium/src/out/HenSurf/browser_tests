@@ -1,0 +1,41 @@
+#!/bin/bash
+echo "Mock browser_tests invoked with arguments: $@"
+echo "[==========] Running 1 test from 1 test suite."
+echo "[----------] Global test environment set-up."
+FILTER_ARG=""
+for arg in "$@"; do
+  if [[ "$arg" == --gtest_filter=* ]]; then
+    FILTER_ARG="$arg"
+    break
+  fi
+done
+if [[ "$FILTER_ARG" == *"--gtest_filter=AboutBrowserTest.FailingTestExample"* ]]; then
+  echo "[----------] 1 test from AboutBrowserTest (FailingTestExample)"
+  echo "[ RUN      ] AboutBrowserTest.FailingTestExample"
+  echo "mock_browser_tests: error: This is a simulated failure."
+  echo "[  FAILED  ] AboutBrowserTest.FailingTestExample (1 ms)"
+  echo "[----------] 1 test from AboutBrowserTest (1 ms total)"
+  echo ""
+  echo "[----------] Global test environment tear-down"
+  echo "[==========] 1 test from 1 test suite ran. (1 ms total)"
+  echo "[  PASSED  ] 0 tests."
+  echo "[  FAILED  ] 1 test, listed below:"
+  echo "[  FAILED  ] AboutBrowserTest.FailingTestExample"
+  echo ""
+  echo " 1 FAILED TEST"
+  exit 1
+elif [[ "$FILTER_ARG" == *"--gtest_filter=AboutBrowserTest.ShowAboutUI"* ]] || [[ -z "$FILTER_ARG" ]]; then
+  echo "[----------] 1 test from AboutBrowserTest (ShowAboutUI)"
+  echo "[ RUN      ] AboutBrowserTest.ShowAboutUI"
+  echo "[       OK ] AboutBrowserTest.ShowAboutUI (0 ms)"
+  echo "[----------] 1 test from AboutBrowserTest (0 ms total)"
+  echo ""
+  echo "[----------] Global test environment tear-down"
+  echo "[==========] 1 test from 1 test suite ran. (0 ms total)"
+  echo "[  PASSED  ] 1 test."
+  exit 0
+else
+  echo "Mock browser_tests: Unknown or no relevant gtest_filter passed. Filter: $FILTER_ARG"
+  echo "[  PASSED  ] 0 tests. (Simulating no tests run for this filter)"
+  exit 0
+fi

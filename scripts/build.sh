@@ -295,6 +295,11 @@ autoninja -C out/HenSurf chrome 2>&1 | tee -a "$BUILD_LOG_FILE"
 CHROME_BUILD_STATUS=${PIPESTATUS[0]}
 log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished main browser build." | tee -a "$BUILD_LOG_FILE"
 
+if command_exists "ccache"; then
+    log_info "Final ccache statistics after main browser build:" | tee -a "$BUILD_LOG_FILE"
+    ccache -s 2>&1 | tee -a "$BUILD_LOG_FILE"
+fi
+
 if [ $CHROME_BUILD_STATUS -ne 0 ]; then
     log_error "❌ Build failed for chrome target. Check $BUILD_LOG_FILE for details." | tee -a "$BUILD_LOG_FILE"
     exit 1

@@ -2,3 +2,4 @@
 is_debug = false
 # The line below is important for apply-patches.sh to find and use for icon path
 mac_deployment_target = "10.15"
+use_ccache = true

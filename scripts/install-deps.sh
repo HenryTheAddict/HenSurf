@@ -89,17 +89,66 @@ elif [[ "$OSTYPE" == "cygwin"* ]] || [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" 
     # Ninja
     echo "🥷 Checking for Ninja..."
     if ! command -v ninja &> /dev/null; then
-        echo "❌ Ninja not found. Please install Ninja."
-        echo "   Using Chocolatey: choco install ninja"
-        echo "   Or download from https://github.com/ninja-build/ninja/releases and add to PATH."
-        # Unlike other checks, for Ninja we might not want to exit immediately,
-        # as depot_tools might fetch its own version.
-        # However, having it pre-installed is generally better.
-        # For now, we'll make it a strong recommendation rather than a hard exit.
-        echo "   Continuing, but build may fail if Ninja is not made available via depot_tools or system PATH."
+        NINJA_VERSION="1.11.1"
+        NINJA_URL="https://github.com/ninja-build/ninja/releases/download/v${NINJA_VERSION}/ninja-win.zip"
+
+        echo "ℹ️ Ninja not found by command -v ninja."
+        # Determine Project Root relative to this script for tools directory
+        # SCRIPT_DIR is defined later, but we need a local version or assume PWD for this part if SCRIPT_DIR isn't set yet
+        CURRENT_SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+        PROJECT_ROOT_FOR_NINJA=$(cd "$CURRENT_SCRIPT_DIR/.." &>/dev/null && pwd)
+        TOOLS_DIR="$PROJECT_ROOT_FOR_NINJA/tools"
+        NINJA_DIR="$TOOLS_DIR/ninja"
+        NINJA_EXE_PATH="$NINJA_DIR/ninja.exe"
+
+        # Check if we previously downloaded it
+        if [ -f "$NINJA_EXE_PATH" ]; then
+            echo "✅ Ninja found in $NINJA_DIR. Adding to PATH."
+            export PATH="$NINJA_DIR:$PATH"
+            if command -v ninja &> /dev/null; then
+                echo "✅ Ninja configured successfully from $NINJA_DIR."
+            else
+                echo "❌ Failed to configure Ninja from $NINJA_DIR even though ninja.exe exists. Manual check needed."
+            fi
+        else
+            echo "🤔 Ninja not found in $NINJA_EXE_PATH. Attempting to download..."
+            if ! command -v curl &> /dev/null || ! command -v unzip &> /dev/null; then
+                echo "❌ curl and/or unzip are not installed. Cannot download Ninja automatically."
+                echo "   Please install curl and unzip, then re-run this script,"
+                echo "   or install Ninja manually:"
+                echo "   Using Chocolatey: choco install ninja"
+                echo "   Or download from https://github.com/ninja-build/ninja/releases and add to PATH."
+                echo "   Continuing, but build may fail if Ninja is not made available."
+            else
+                echo "📦 Attempting to download Ninja v${NINJA_VERSION}..."
+                mkdir -p "$NINJA_DIR"
+                if curl -L "$NINJA_URL" -o "$NINJA_DIR/ninja-win.zip"; then
+                    echo "✅ Downloaded ninja-win.zip."
+                    if unzip -oq "$NINJA_DIR/ninja-win.zip" ninja.exe -d "$NINJA_DIR"; then
+                        echo "✅ Unzipped ninja.exe to $NINJA_DIR."
+                        export PATH="$NINJA_DIR:$PATH"
+                        if command -v ninja &> /dev/null; then
+                            echo "✅ Ninja v${NINJA_VERSION} downloaded and configured successfully."
+                        else
+                            echo "❌ Failed to configure Ninja after download. Check PATH and $NINJA_EXE_PATH."
+                        fi
+                        echo "🧹 Cleaning up downloaded zip file..."
+                        rm "$NINJA_DIR/ninja-win.zip"
+                    else
+                        echo "❌ Failed to unzip ninja-win.zip."
+                        echo "   Please install Ninja manually or check your unzip utility."
+                        rm "$NINJA_DIR/ninja-win.zip" # Clean up failed download
+                    fi
+                else
+                    echo "❌ Failed to download Ninja from $NINJA_URL."
+                    echo "   Please install Ninja manually."
+                fi
+            fi
+        fi
     else
         echo "✅ Ninja found."
     fi
+
 
     # Visual Studio Build Tools
     echo "🔧 Visual Studio Build Tools:"

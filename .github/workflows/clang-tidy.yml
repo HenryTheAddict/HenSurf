@@ -4,17 +4,12 @@ on:
   pull_request:
     branches: [ main ]
   push:
-    branches: [ main ] # Consider changing to manual dispatch or scheduled runs for resource intensity
+    branches: [ main ]
 
 jobs:
   analyze_cpp:
-    # WARNING: A full Chromium checkout and build requires significant disk space (>100GB) and memory.
-    # Standard GitHub-hosted runners might be insufficient or very slow.
-    # Consider using larger runners (if available on your plan) or self-hosted runners.
     runs-on: ubuntu-latest
     env:
-      # IMPORTANT: Set this to a specific Git tag or commit hash from Chromium for stable CI.
-      # Example: '120.0.6099.109' (a recent tag at time of writing, check for latest stable/branch)
       CHROMIUM_VERSION_TAG: 'YOUR_TARGET_CHROMIUM_TAG_OR_HASH'
       DEPOT_TOOLS_DIR: ${{ github.workspace }}/depot_tools
 
@@ -22,7 +17,7 @@ jobs:
       - name: Checkout HenSurf repository
         uses: actions/checkout@v4
         with:
-          path: hensurf # Checks out HenSurf into ${{ github.workspace }}/hensurf
+          path: hensurf
 
       - name: Install depot_tools
         run: |
@@ -30,7 +25,7 @@ jobs:
           echo "${{ env.DEPOT_TOOLS_DIR }}" >> $GITHUB_PATH
 
       - name: Fetch pinned Chromium version
-        working-directory: ${{ github.workspace }} # Ensure commands run from the root workspace directory
+        working-directory: ${{ github.workspace }}
         run: |
           echo "Fetching Chromium version: ${{ env.CHROMIUM_VERSION_TAG }}"
           if [ "${{ env.CHROMIUM_VERSION_TAG }}" == "YOUR_TARGET_CHROMIUM_TAG_OR_HASH" ]; then
@@ -53,7 +48,7 @@ jobs:
                   "checkout_pgo_profiles": False,
                   "checkout_nacl": False,
                   "checkout_ios_webkit": False,
-                  "checkout_reclient": False, # Try to disable reclient if not needed
+                  "checkout_reclient": False,
                   "checkout_android": False,
                   "checkout_fuchsia": False,
                   "checkout_cast": False,
@@ -69,13 +64,12 @@ jobs:
           gclient sync --no-history --nohooks -j8 --revision ${{ env.CHROMIUM_VERSION_TAG }} -D --with_branch_heads --with_tags
 
       - name: Run gclient runhooks
-        working-directory: ${{ github.workspace }}/chromium # gclient needs to run where .gclient file is
+        working-directory: ${{ github.workspace }}/chromium
         run: |
           # This step downloads toolchains like Clang, including clang-tidy
           gclient runhooks -j8
 
       - name: Apply HenSurf patches
-        # Patches must be applied to the chromium source, which is now at ${{ github.workspace }}/chromium/src
         working-directory: ${{ github.workspace }}/chromium/src
         run: |
           # Ensure the HenSurf scripts are executable
@@ -114,7 +108,7 @@ jobs:
         working-directory: ${{ github.workspace }}/chromium/src
         run: |
           CLANG_TIDY_PATH="${{ github.workspace }}/chromium/src/third_party/llvm-build/Release+Asserts/bin/clang-tidy"
-          COMPILE_COMMANDS_DB_DIR="${{ github.workspace }}/chromium/out/ClangTidy" # Directory containing compile_commands.json
+          COMPILE_COMMANDS_DB_DIR="${{ github.workspace }}/chromium/out/ClangTidy"
 
           # Check if clang-tidy exists
           if [ ! -f "$CLANG_TIDY_PATH" ]; then
@@ -139,7 +133,7 @@ jobs:
           )
 
           echo "Running clang-tidy on specific HenSurf files..."
-          touch ${{ github.workspace }}/clang_tidy_output.txt # Create log file
+          touch ${{ github.workspace }}/clang_tidy_output.txt
 
           for file_path in "${HENSURF_FILES[@]}"; do
             if [ -f "$file_path" ]; then
@@ -159,11 +153,9 @@ jobs:
           # fi
 
       - name: Upload clang-tidy log
-        uses: actions/upload-artifact@v4 # Changed to v4
-        if: always() # Upload even if previous steps fail
+        uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: clang-tidy-log
           path: |
             ${{ github.workspace }}/clang_tidy_output.txt
-            # You can also add the compile_commands.json for debugging if needed
-            # ${{ github.workspace }}/chromium/out/ClangTidy/compile_commands.json

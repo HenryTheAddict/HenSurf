@@ -11,9 +11,6 @@ on:
 jobs:
   analyze:
     name: Analyze
-    # WARNING: A full Chromium checkout and build requires significant disk space (>100GB) and memory.
-    # Standard GitHub-hosted runners might be insufficient or very slow.
-    # Consider using larger runners (if available on your plan) or self-hosted runners.
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -21,8 +18,6 @@ jobs:
       security-events: write
 
     env:
-      # IMPORTANT: Set this to a specific Git tag or commit hash from Chromium for stable CI.
-      # Example: '120.0.6099.109' (a recent tag at time of writing, check for latest stable/branch)
       CHROMIUM_VERSION_TAG: 'YOUR_TARGET_CHROMIUM_TAG_OR_HASH'
       DEPOT_TOOLS_DIR: ${{ github.workspace }}/depot_tools
 
@@ -30,7 +25,7 @@ jobs:
     - name: Checkout HenSurf repository
       uses: actions/checkout@v4
       with:
-        path: hensurf # Checks out HenSurf into ${{ github.workspace }}/hensurf
+        path: hensurf
 
     - name: Install depot_tools
       run: |
@@ -45,7 +40,7 @@ jobs:
         fi
 
     - name: Fetch pinned Chromium version
-      working-directory: ${{ github.workspace }} # Ensures 'chromium' is created at workspace root
+      working-directory: ${{ github.workspace }}
       run: |
         echo "Fetching Chromium version: ${{ env.CHROMIUM_VERSION_TAG }}"
         mkdir chromium && cd chromium
@@ -72,12 +67,11 @@ jobs:
         gclient sync --no-history --nohooks -j8 --revision ${{ env.CHROMIUM_VERSION_TAG }} -D --with_branch_heads --with_tags
 
     - name: Run gclient runhooks
-      working-directory: ${{ github.workspace }}/chromium # gclient needs to run where .gclient file is
+      working-directory: ${{ github.workspace }}/chromium
       run: |
         gclient runhooks -j8
 
     - name: Apply HenSurf patches
-      # Patches must be applied to the chromium source, which is now at ${{ github.workspace }}/chromium/src
       working-directory: ${{ github.workspace }}/chromium/src
       run: |
         # Ensure the HenSurf scripts are executable
@@ -89,14 +83,10 @@ jobs:
       with:
         languages: cpp
         queries: security-extended
-        # By not specifying build-mode, CodeQL will attempt to trace the build commands
-        # that follow this step. The CodeQL CLI will be available in the PATH.
 
-    # This step replaces the old 'Autobuild' step.
-    # CodeQL's init action (above) sets up tracers that will monitor the build commands run here.
     - name: Build HenSurf components for CodeQL
-      working-directory: ${{ github.workspace }}/chromium/src # GN and Ninja are typically run from here
-      shell: bash # Ensure bash is used for complex commands like gn args
+      working-directory: ${{ github.workspace }}/chromium/src
+      shell: bash
       run: |
         echo "Starting build for CodeQL tracing..."
         # Setup GN args - these should be consistent with how HenSurf is normally built.
@@ -128,7 +118,4 @@ jobs:
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:
-        # Optional: Specify where CodeQL should find the database if not default.
-        # Usually, CodeQL figures this out automatically after the build.
-        # database: ${{ github.workspace }}/codeql_databases/cpp
-        category: "/language:cpp" # Optional: For better categorization of results
+        category: "/language:cpp"

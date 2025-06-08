@@ -13,16 +13,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetch all history for deep scan
+          fetch-depth: 0
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Optional: pass token for private repos or to report results back to GitHub Advanced Security
-          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE}} # If you have a Gitleaks license
-          # The action will automatically fail if leaks are found.
-          # To customize behavior (e.g., report only, use a config file):
-          # with:
-          #   config_path: .gitleaks.toml
-          #   report_path: gitleaks-report.json
-          #   fail: false # Set to true to fail the job if leaks are found
-          # For now, we'll use the default behavior which is to fail on leaks.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

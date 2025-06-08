@@ -106,7 +106,7 @@ The build system is responsible for compiling the Chromium source code and apply
 
 ### Configuration
 
-HenSurf tailors the Chromium build process using a special configuration file located at `config/hensurf.gn`. This file acts like a detailed set of instructions for Chromium's build system (called GN, which stands for "Generate Ninja" build files). These instructions tell the build system to:
+HenSurf tailors the Chromium build process using a special configuration file located at `src/hensurf/config/hensurf.gn`. This file acts like a detailed set of instructions for Chromium's build system (called GN, which stands for "Generate Ninja" build files). These instructions tell the build system to:
 - Turn off unwanted functionalities using 'build flags'. Build flags are essentially on/off switches that control which features are included or excluded during compilation.
 - Adjust settings to optimize for better privacy and faster performance.
 - Exclude components and integrations that are specific to Google's services.
@@ -114,7 +114,7 @@ HenSurf tailors the Chromium build process using a special configuration file lo
 
 ### Patch System
 
-HenSurf makes direct changes to Chromium's original source code using a 'patch system'. Patches are files (stored in the `patches/` directory) that describe specific additions, removals, or modifications to the Chromium code. These `.patch` files are applied using standard tools like `git apply`. They are responsible for:
+HenSurf makes direct changes to Chromium's original source code using a 'patch system'. Patches are files (stored in the `src/hensurf/patches/` directory) that describe specific additions, removals, or modifications to the Chromium code. These `.patch` files are applied using standard tools like `git apply`. They are responsible for:
 - Modifying the browser's underlying C++ and other code to alter its behavior (e.g., removing AI features, disabling Google services).
 - Removing visual elements from the user interface (UI) related to disabled features.
 - Changing default browser settings (e.g., search engine).

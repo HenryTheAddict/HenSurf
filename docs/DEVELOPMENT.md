@@ -81,7 +81,7 @@ This guide assumes you have already cloned the HenSurf repository and are in its
 
 1. **Modify Source Code**
    ```bash
-   cd chromium/src
+   cd src/chromium
    # Edit files as needed
    ```
 
@@ -101,35 +101,35 @@ Patches are how HenSurf modifies the Chromium source code. A patch file is a tex
 
 **1. Identify Changes for Your Patch:**
    - Before creating a patch, ensure your changes are focused. A single patch should ideally address a single, logical change (e.g., remove one specific bloatware feature, fix one bug). Avoid bundling unrelated changes into one patch.
-   - Navigate to the Chromium source directory: `cd chromium/src`.
+   - Navigate to the Chromium source directory: `cd src/chromium`.
    - Use `git status` to see which files you've modified.
    - Use `git add <file_path>` for each file you want to include in the patch. This stages the changes for commit (though we are generating a diff, staging helps `git diff --staged`).
 
 **2. Generate the Patch File:**
    - Once you have staged the changes for your specific feature or fix, generate the patch file using `git diff`.
-   - It's crucial to be in the `chromium/src` directory.
+   - It's crucial to be in the `src/chromium` directory.
    - The output of `git diff --staged` is what you need for your patch file.
    ```bash
-   cd chromium/src
+   cd src/chromium
    # Ensure you've staged only the files relevant to this specific patch
    # git add path/to/modified/file1.cc
    # git add path/to/another/modified/file2.h
 
    # Generate the patch relative to the HenSurf project root
-   git diff --staged > ../../patches/my-new-feature-or-fix.patch
+   git diff --staged > ../../src/hensurf/patches/my-new-feature-or-fix.patch
    ```
    - **Naming Convention:** Use a descriptive name for your patch file, like `remove-profile-import-dialog.patch` or `fix-crash-on-settings-page.patch`.
 
 **3. Add Patch to Apply Script:**
-   - For your patch to be applied during the HenSurf build process, ensure it's in the `patches/` directory.
+   - For your patch to be applied during the HenSurf build process, ensure it's in the `src/hensurf/patches/` directory.
    - The `scripts/apply-patches.sh` script attempts to apply key patches like `remove-ai-features.patch` and `integrate-logo.patch`. If you are adding a new, separate feature patch, you might use `scripts/apply_feature_patches.sh apply your-patch-name` for testing, or integrate it into the main `apply-patches.sh` if it's a core HenSurf modification.
-   - Patches are typically applied with `patch -p1` relative to the `chromium/src` directory.
+   - Patches are typically applied with `patch -p1` relative to the `src/chromium` directory.
 
 **4. Test Patch Application:**
    - If you've modified `apply-patches.sh` or are testing a feature patch:
    ```bash
-   # From the HenSurf project root, after navigating into chromium/src if needed by your test
-   # (apply-patches.sh handles its own cd into src)
+   # From the HenSurf project root, after navigating into src/chromium if needed by your test
+   # (apply-patches.sh handles its own cd into src/chromium)
    ./scripts/apply-patches.sh
    # or for a specific feature patch:
    # ./scripts/apply_feature_patches.sh apply your-patch-name
@@ -146,9 +146,9 @@ Patches are how HenSurf modifies the Chromium source code. A patch file is a tex
 #### Debug Build
 ```bash
 # Create debug configuration
-mkdir -p chromium/src/out/Debug
-echo 'is_debug = true' > chromium/src/out/Debug/args.gn
-echo 'symbol_level = 2' >> chromium/src/out/Debug/args.gn
+mkdir -p src/chromium/out/Debug
+echo 'is_debug = true' > src/chromium/out/Debug/args.gn
+echo 'symbol_level = 2' >> src/chromium/out/Debug/args.gn
 
 # Build debug version
 autoninja -C out/Debug chrome
@@ -169,8 +169,8 @@ autoninja -C out/HenSurf chrome
 **Symptom**: Compilation errors
 ```bash
 # Clean build directory
-rm -rf chromium/src/out/HenSurf
-gn gen chromium/src/out/HenSurf
+rm -rf src/chromium/out/HenSurf
+gn gen src/chromium/out/HenSurf
 
 # Check for missing dependencies
 gclient runhooks
@@ -262,7 +262,7 @@ The `scripts/run_all_tests.py` script provides a unified way to run custom tests
 python3 scripts/run_all_tests.py --list-tests
 
 # Example: Run custom scripts and specific browser tests on Linux
-python3 scripts/run_all_tests.py --platform linux --output-dir chromium/src/out/HenSurf-linux-x64 --run-chromium-tests browser_tests:BrowserTest.Sanity
+python3 scripts/run_all_tests.py --platform linux --output-dir src/chromium/out/HenSurf-linux-x64 --run-chromium-tests browser_tests:BrowserTest.Sanity
 ```
 
 #### Performance Tests
@@ -340,7 +340,7 @@ time ./out/HenSurf/chrome --user-data-dir=/tmp/perf --no-first-run
 
 1. **Update Version**
    ```bash
-   # Edit version in branding/BRANDING
+   # Edit version in src/hensurf/branding/BRANDING
    MAJOR=1
    MINOR=1
    BUILD=0
@@ -357,12 +357,12 @@ time ./out/HenSurf/chrome --user-data-dir=/tmp/perf --no-first-run
 
 ```bash
 # Clean build for release
-rm -rf chromium/src/out/HenSurf
+rm -rf src/chromium/out/HenSurf
 ./scripts/apply-patches.sh
 ./scripts/build.sh
 
 # Create installer
-autoninja -C chromium/src/out/HenSurf chrome/installer/mac
+autoninja -C src/chromium/out/HenSurf chrome/installer/mac
 ```
 
 ### Distribution
@@ -475,16 +475,19 @@ autoninja -C chromium/src/out/HenSurf chrome/installer/mac
 
 ## Branding and Logo Setup
 
-The branding assets (icons, `BRANDING` file) are located in the `branding/` directory.
+The branding assets (icons, `BRANDING` file) are located in the `src/hensurf/branding/` directory.
 The `scripts/setup-logo.sh` script is responsible for:
-- Copying all PNG icons to their correct locations within `chromium/src/chrome/app/theme/`.
+- Copying all PNG icons to their correct locations within `src/chromium/chrome/app/theme/`.
 - Generating `chrome.ico` for Windows (if ImageMagick `convert` is available).
 - Generating `app.icns` for macOS (if `iconutil` is available on a macOS host).
-- Creating/updating `chromium/src/chrome/app/chrome_exe.ver` with HenSurf branding details for Windows executables.
-- Copying the `branding/BRANDING` file to `chromium/src/chrome/app/theme/hensurf/BRANDING`.
+- Creating/updating `src/chromium/chrome/app/chrome_exe.ver` with HenSurf branding details for Windows executables.
+# Note: The HenSurf-specific theme directory (src/chromium/chrome/app/theme/hensurf), including its BRANDING file,
+# has been moved to src/hensurf/branding/theme/hensurf/.
+# scripts/setup-logo.sh no longer copies the main src/hensurf/branding/BRANDING file to the old theme location.
+# Build system (GN) files are expected to reference assets from src/hensurf/branding/theme/hensurf/ directly.
 
 This script is called automatically by `scripts/apply-patches.sh` after other patches are applied.
-If you only need to update logo/icon files after making changes in the `branding/icons/` directory, you can run `scripts/setup-logo.sh` directly (ensure you are in the project root, or that the script can correctly find `PROJECT_ROOT` and `CHROMIUM_SRC`).
+If you only need to update logo/icon files after making changes in the `src/hensurf/branding/icons/` directory, you can run `scripts/setup-logo.sh` directly (ensure you are in the project root, or that the script can correctly find `PROJECT_ROOT` and `CHROMIUM_SRC`).
 
 ## Fast Developer Builds
 

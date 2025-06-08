@@ -3,7 +3,7 @@
 # HenSurf Browser - Feature Patch Management Script
 # This script applies or unapplies specific feature patches to the Chromium source code.
 # It is intended for toggling discrete features during development or experimentation.
-# Patches are expected to be in the 'patches/' directory relative to the project root.
+# Patches are expected to be in the 'src/hensurf/patches/' directory relative to the project root.
 
 set -e
 
@@ -16,7 +16,7 @@ source "$SCRIPT_DIR_FEATURE_PATCH/utils.sh"
 usage() {
   log_error "Usage: $0 <apply|unapply> <feature_name>"
   log_error "Example: $0 apply remove-some-feature"
-  log_error "  'feature_name' corresponds to 'patches/feature_name.patch'"
+  log_error "  'feature_name' corresponds to 'src/hensurf/patches/feature_name.patch'"
   exit 1
 }
 
@@ -28,7 +28,7 @@ fi
 ACTION="$1"
 FEATURE_NAME="$2"
 # Assume this script is run from the project root. Patches are in a subdirectory.
-PATCH_FILE="patches/${FEATURE_NAME}.patch"
+PATCH_FILE="src/hensurf/patches/${FEATURE_NAME}.patch"
 
 log_info "🔧 Attempting to $ACTION patch for feature '$FEATURE_NAME' using '$PATCH_FILE'..."
 

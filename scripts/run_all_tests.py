@@ -15,12 +15,12 @@ import sys
 # Try to determine the absolute path to the root of the HenSurf project.
 # This script is in /app/scripts/run_all_tests.py
 # Project root is /app
-# Chromium source is /app/chromium/src
-# Output dir is /app/chromium/src/out/HenSurf
+# Chromium source is /app/src/chromium
+# Output dir is /app/src/chromium/out/HenSurf
 # Custom test scripts are in /app/scripts/
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
-HENSURF_SRC_DIR = os.path.join(PROJECT_ROOT, 'chromium', 'src')
+HENSURF_SRC_DIR = os.path.join(PROJECT_ROOT, 'src', 'chromium')
 HENSURF_OUT_DIR_DEFAULT = os.path.join(
     HENSURF_SRC_DIR, 'out', 'HenSurf'
 )

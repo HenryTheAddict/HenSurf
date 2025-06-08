@@ -41,20 +41,21 @@ index 1234567..abcdefg 100644
 --- a/chrome/app/theme/chromium/BRANDING
 +++ b/chrome/app/theme/chromium/BRANDING
 @@ -1,8 +1,8 @@
--COMPANY_FULLNAME=The Chromium Authors
--COMPANY_SHORTNAME=Chromium
--PRODUCT_FULLNAME=Chromium
--PRODUCT_SHORTNAME=Chromium
--PRODUCT_INSTALLER_FULLNAME=Chromium
--COPYRIGHT=Copyright $YEAR The Chromium Authors. All rights reserved.
+ -COMPANY_FULLNAME=The Chromium Authors
+ -COMPANY_SHORTNAME=Chromium
+ -PRODUCT_FULLNAME=Chromium
+ -PRODUCT_SHORTNAME=Chromium
+ -PRODUCT_INSTALLER_FULLNAME=Chromium Installer
+ -COPYRIGHT=Copyright 2023 The Chromium Authors. All rights reserved.
+ -OFFICIAL_BUILD=0
+ -MAC_BUNDLE_ID=org.chromium.Chromium
 +COMPANY_FULLNAME=HenSurf
 +COMPANY_SHORTNAME=HenSurf
 +PRODUCT_FULLNAME=HenSurf Browser
 +PRODUCT_SHORTNAME=HenSurf
 +PRODUCT_INSTALLER_FULLNAME=HenSurf Browser Installer
 +COPYRIGHT=Copyright 2025 HenSurf. All rights reserved.
- OFFICIAL_BUILD=1
--MAC_BUNDLE_ID=org.chromium.Chromium
++OFFICIAL_BUILD=1
 +MAC_BUNDLE_ID=xyz.h3nry.hensurf
 diff --git a/chrome/browser/ui/startup/startup_browser_creator_impl.cc b/chrome/browser/ui/startup/startup_browser_creator_impl.cc
 index 1234567..abcdefg 100644

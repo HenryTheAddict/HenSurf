@@ -49,6 +49,33 @@ if ! command_exists "patch"; then
 fi
 log_success "✅ 'patch' command found." | tee -a "$LOG_FILE"
 
+# Run setup-logo.sh to stage all branding assets BEFORE patches are applied
+# This script now populates src/hensurf/branding/distributable_assets/chromium/
+log_info "🎨 Preparing branding assets by executing 'scripts/setup-logo.sh'..." | tee -a "$LOG_FILE"
+SETUP_LOGO_SCRIPT_PATH="$PROJECT_ROOT/scripts/setup-logo.sh"
+if [ -f "$SETUP_LOGO_SCRIPT_PATH" ]; then
+    # Ensure it's executable
+    chmod +x "$SETUP_LOGO_SCRIPT_PATH"
+    # Execute setup-logo.sh from the project root context
+    # Temporarily cd to PROJECT_ROOT to run setup-logo.sh, then cd back.
+    current_dir_for_setup_logo=$(pwd)
+    cd "$PROJECT_ROOT"
+    if "$SETUP_LOGO_SCRIPT_PATH" 2>&1 | tee -a "$LOG_FILE"; then # Changed this line
+        log_success "✅ 'scripts/setup-logo.sh' executed successfully and staged assets." | tee -a "$LOG_FILE"
+    else
+        log_warn "⚠️ 'scripts/setup-logo.sh' execution reported errors. Staged assets might be incomplete. Check log." | tee -a "$LOG_FILE"
+        PATCH_FAILURES_LIST+=("setup-logo.sh execution (staging assets)")
+    fi
+    cd "$current_dir_for_setup_logo" # cd back to where we were (src/chromium)
+else
+    log_error "❌ Critical script 'scripts/setup-logo.sh' not found at '$SETUP_LOGO_SCRIPT_PATH'. Cannot prepare branding assets." | tee -a "$LOG_FILE"
+    PATCH_FAILURES_LIST+=("setup-logo.sh not found (staging assets)")
+    # This is likely a fatal error for branding. Decide if script should exit.
+    # For now, continue and report.
+fi
+log_progress "ASSET_STAGING"
+
+
 log_info "Working directory: $(pwd)" | tee -a "$LOG_FILE"
 OS_TYPE_APPLY=$(get_os_type)
 
@@ -72,7 +99,7 @@ if [[ "$OS_TYPE_APPLY" == "windows" ]]; then
 else # Linux/macOS
     log_info "Available disk space: $(df -h . | tail -1 | awk '{print $4}')" | tee -a "$LOG_FILE"
     if [ -d "$PROJECT_ROOT/src/chromium" ]; then
-        log_info "📁 Chromium source found, size: $(du -sh $PROJECT_ROOT/src/chromium | cut -f1)" | tee -a "$LOG_FILE"
+        log_info "📁 Chromium source found, size: $(du -sh "$PROJECT_ROOT"/src/chromium | cut -f1)" | tee -a "$LOG_FILE"
     fi
 fi
 
@@ -251,34 +278,80 @@ EOF
 log_success "✅ Created components/version_info/hensurf_version_info.cc." | tee -a "$LOG_FILE"
 log_progress "USER_AGENT"
 
-# Call setup-logo.sh to place all physical icon and branding files.
-# This should be done after patches are applied, as patches might affect directory structures
-# or build files that setup-logo.sh relies on or that reference assets it places.
-log_info "🎨 Executing 'scripts/setup-logo.sh' to place icon and branding files..." | tee -a "$LOG_FILE"
-SETUP_LOGO_SCRIPT="$PROJECT_ROOT/scripts/setup-logo.sh"
+# Copy Staged Branding Assets to src/chromium
+HENSURF_STAGED_ASSETS_DIR="$PROJECT_ROOT/src/hensurf/branding/distributable_assets/chromium"
+log_info "🚚 Copying staged branding assets from $HENSURF_STAGED_ASSETS_DIR to src/chromium..." | tee -a "$LOG_FILE"
 
-if [ -f "$SETUP_LOGO_SCRIPT" ]; then
-    # Ensure it's executable
-    chmod +x "$SETUP_LOGO_SCRIPT"
-    # Execute setup-logo.sh. It cds into src/chromium itself.
-    # We are already in src/chromium, but setup-logo.sh is written to be callable from project root too.
-    # To ensure it behaves as expected when called from apply-patches.sh (already in src/chromium),
-    # it's fine to call it directly. It uses PROJECT_ROOT for paths to branding assets.
-    if "$SETUP_LOGO_SCRIPT" 2>&1 | tee -a "$LOG_FILE"; then
-        log_success "✅ 'scripts/setup-logo.sh' executed successfully." | tee -a "$LOG_FILE"
-    else
-        log_warn "⚠️ 'scripts/setup-logo.sh' execution reported errors. Check log." | tee -a "$LOG_FILE"
-        # Decide if this is a fatal error for apply-patches.sh or not.
-        # For now, log as warning and continue.
-        PATCH_FAILURES_LIST+=("setup-logo.sh execution")
-    fi
+if [ ! -d "$HENSURF_STAGED_ASSETS_DIR" ]; then
+    log_warn "⚠️ Staged assets directory not found at $HENSURF_STAGED_ASSETS_DIR. Skipping asset copy. Run setup-logo.sh first." | tee -a "$LOG_FILE"
+    PATCH_FAILURES_LIST+=("Staged assets directory not found")
 else
-    log_error "❌ Critical script 'scripts/setup-logo.sh' not found at '$SETUP_LOGO_SCRIPT'. Cannot proceed with logo/branding setup." | tee -a "$LOG_FILE"
-    # This is likely a fatal error for the branding goals.
-    PATCH_FAILURES_LIST+=("setup-logo.sh not found")
-    # exit 1; # Or continue if some patching is still valuable. For now, continue and report.
+    # Define target directories within src/chromium (current working directory)
+    DEST_THEME_MAIN_DIR_IN_SRC_CHROMIUM="chrome/app/theme"
+    DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM="$DEST_THEME_MAIN_DIR_IN_SRC_CHROMIUM/chromium"
+    DEST_THEME_100_PERCENT_DIR_IN_SRC_CHROMIUM="$DEST_THEME_MAIN_DIR_IN_SRC_CHROMIUM/default_100_percent/chromium"
+    DEST_THEME_200_PERCENT_DIR_IN_SRC_CHROMIUM="$DEST_THEME_MAIN_DIR_IN_SRC_CHROMIUM/default_200_percent/chromium"
+    DEST_APP_DIR_IN_SRC_CHROMIUM="chrome/app"
+
+    # Create destination directories in src/chromium
+    mkdir -p "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM"
+    mkdir -p "$DEST_THEME_100_PERCENT_DIR_IN_SRC_CHROMIUM"
+    mkdir -p "$DEST_THEME_200_PERCENT_DIR_IN_SRC_CHROMIUM"
+    mkdir -p "$DEST_APP_DIR_IN_SRC_CHROMIUM"
+    log_info "   Ensured destination directories exist in src/chromium." | tee -a "$LOG_FILE"
+
+    # Copy PNG Icons
+    log_info "   Copying PNG icons..." | tee -a "$LOG_FILE"
+    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/product_logo_16.png" "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/product_logo_16.png"
+    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/product_logo_32.png" "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/product_logo_32.png"
+    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/default_100_percent/chromium/product_logo_48.png" "$DEST_THEME_100_PERCENT_DIR_IN_SRC_CHROMIUM/product_logo_48.png"
+    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/product_logo_64.png" "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/product_logo_64.png"
+    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/product_logo_128.png" "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/product_logo_128.png"
+    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/product_logo_256.png" "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/product_logo_256.png"
+    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/default_200_percent/chromium/product_logo_16.png" "$DEST_THEME_200_PERCENT_DIR_IN_SRC_CHROMIUM/product_logo_16.png"
+    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/default_200_percent/chromium/product_logo_32.png" "$DEST_THEME_200_PERCENT_DIR_IN_SRC_CHROMIUM/product_logo_32.png"
+    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/default_200_percent/chromium/product_logo_48.png" "$DEST_THEME_200_PERCENT_DIR_IN_SRC_CHROMIUM/product_logo_48.png"
+    log_info "   PNG icons copied." | tee -a "$LOG_FILE"
+
+    # Copy Windows ICO
+    DEST_WIN_ICON_DIR_IN_SRC_CHROMIUM="$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/win"
+    if [ -f "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/win/chromium.ico" ]; then
+        mkdir -p "$DEST_WIN_ICON_DIR_IN_SRC_CHROMIUM"
+        cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/win/chromium.ico" "$DEST_WIN_ICON_DIR_IN_SRC_CHROMIUM/chromium.ico"
+        log_info "   Copied chromium.ico to $DEST_WIN_ICON_DIR_IN_SRC_CHROMIUM/." | tee -a "$LOG_FILE"
+    else
+        log_info "   chromium.ico not found in staged assets ($HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/win/chromium.ico), skipping." | tee -a "$LOG_FILE"
+    fi
+
+    # Copy Favicon
+    if [ -f "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/favicon.png" ]; then
+        cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/favicon.png" "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/favicon.png"
+        log_info "   Copied favicon.png." | tee -a "$LOG_FILE"
+    else
+        log_info "   favicon.png not found in staged assets, skipping." | tee -a "$LOG_FILE"
+    fi
+
+    # Copy chrome_exe.ver
+    if [ -f "$HENSURF_STAGED_ASSETS_DIR/chrome/app/chrome_exe.ver" ]; then
+        cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/chrome_exe.ver" "$DEST_APP_DIR_IN_SRC_CHROMIUM/chrome_exe.ver"
+        log_info "   Copied chrome_exe.ver." | tee -a "$LOG_FILE"
+    else
+        log_info "   chrome_exe.ver not found in staged assets, skipping." | tee -a "$LOG_FILE"
+    fi
+
+    # Copy macOS app.icns
+    if [ -f "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/app.icns" ]; then
+        cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/app.icns" "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/app.icns"
+        log_info "   Copied app.icns." | tee -a "$LOG_FILE"
+    else
+        log_info "   app.icns not found in staged assets, skipping (this is normal if not on macOS host during setup-logo.sh or if iconutil failed)." | tee -a "$LOG_FILE"
+    fi
+    log_success "✅ Staged branding assets copied to src/chromium." | tee -a "$LOG_FILE"
 fi
-log_progress "LOGO_FILE_SETUP"
+log_progress "STAGED_ASSETS_COPY"
+
+# Original call to setup-logo.sh is removed from here. Its asset staging part is done earlier,
+# and its asset deployment part is handled by the new copy step above.
 
 
 # Final summary

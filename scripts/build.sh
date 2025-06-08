@@ -18,7 +18,7 @@ BUILD_LOG_FILE="$CHROMIUM_SRC_DIR/out/HenSurf/build.log" # Log inside out/HenSur
 # Ensure out/HenSurf directory exists for the log file
 mkdir -p "$CHROMIUM_SRC_DIR/out/HenSurf"
 # Clear previous log file or create if not exists
->"$BUILD_LOG_FILE"
+true >"$BUILD_LOG_FILE"
 
 
 log_info "🔨 Building HenSurf Browser..." | tee -a "$BUILD_LOG_FILE"
@@ -262,7 +262,7 @@ fi
 GN_GEN_STATUS=${PIPESTATUS[0]}
 log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished gn generation." | tee -a "$BUILD_LOG_FILE"
 
-if [ $GN_GEN_STATUS -ne 0 ]; then
+if [ "$GN_GEN_STATUS" -ne 0 ]; then
     log_error "❌ Failed to generate build files. Check the configuration and $BUILD_LOG_FILE." | tee -a "$BUILD_LOG_FILE"
     exit 1
 fi
@@ -307,7 +307,7 @@ if command_exists "ccache"; then
     ccache -s 2>&1 | tee -a "$BUILD_LOG_FILE"
 fi
 
-if [ $CHROME_BUILD_STATUS -ne 0 ]; then
+if [ "$CHROME_BUILD_STATUS" -ne 0 ]; then
     log_error "❌ Build failed for chrome target. Check $BUILD_LOG_FILE for details." | tee -a "$BUILD_LOG_FILE"
     exit 1
 fi
@@ -377,7 +377,7 @@ if [[ "$OS_TYPE_BUILD" == "macos" ]]; then
 
     if [ "$BUILD_MINI_INSTALLER" = true ]; then
         log_info "📦 Building macOS installer (dmg)..." | tee -a "$BUILD_LOG_FILE"
-        DMG_CHECK_FILE=$(ls out/HenSurf/*.dmg 2>/dev/null | head -n 1)
+        DMG_CHECK_FILE=$(find out/HenSurf/ -maxdepth 1 -name '*.dmg' -print -quit 2>/dev/null)
         if [ -f "$DMG_CHECK_FILE" ]; then
             log_info "ℹ️ macOS installer artifact ($DMG_CHECK_FILE) already exists. Skipping build." | tee -a "$BUILD_LOG_FILE"
         else
@@ -441,7 +441,7 @@ if [[ "$OS_TYPE_BUILD" == "macos" ]]; then
         log_info "   macOS App Bundle: out/HenSurf/HenSurf.app" | tee -a "$BUILD_LOG_FILE"
     fi
     if [ "$BUILD_MINI_INSTALLER" = true ]; then
-        DMG_FILE=$(ls out/HenSurf/*.dmg 2>/dev/null | head -n 1)
+        DMG_FILE=$(find out/HenSurf/ -maxdepth 1 -name '*.dmg' -print -quit 2>/dev/null)
         if [ -f "$DMG_FILE" ]; then
             log_info "   macOS Installer:  $(basename "$DMG_FILE") (in out/HenSurf/)" | tee -a "$BUILD_LOG_FILE"
         elif [ -f "out/HenSurf/HenSurf.dmg" ]; then
@@ -455,7 +455,7 @@ elif [[ "$OS_TYPE_BUILD" == "windows" ]]; then
         elif [ -f "out/HenSurf/setup.exe" ]; then
             log_info "   Windows Installer: out/HenSurf/setup.exe" | tee -a "$BUILD_LOG_FILE"
         else
-            WIN_INSTALLER_FILE=$(ls out/HenSurf/*installer.exe 2>/dev/null | head -n 1)
+            WIN_INSTALLER_FILE=$(find out/HenSurf/ -maxdepth 1 -name '*installer.exe' -print -quit 2>/dev/null)
             if [ -f "$WIN_INSTALLER_FILE" ]; then
                  log_info "   Windows Installer: $(basename "$WIN_INSTALLER_FILE") (in out/HenSurf/)" | tee -a "$BUILD_LOG_FILE"
             fi

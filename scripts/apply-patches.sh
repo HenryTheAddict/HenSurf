@@ -12,14 +12,14 @@ source "$SCRIPT_DIR_APPLY_PATCHES/utils.sh"
 PROJECT_ROOT=$(cd "$SCRIPT_DIR_APPLY_PATCHES/.." &>/dev/null && pwd)
 LOG_FILE="$PROJECT_ROOT/apply-patches.log"
 # Clear previous log file
->"$LOG_FILE"
+true >"$LOG_FILE"
 
 START_TIME=$(date +%s)
 
 # Function to log progress with timing (uses utils.sh _log)
 log_progress() {
     local step="$1"
-    local current_time=$(date +%s)
+    local current_time; current_time=$(date +%s)
     local elapsed=$((current_time - START_TIME))
     log_info "[PROGRESS] Step $step completed in ${elapsed}s total elapsed" | tee -a "$LOG_FILE"
 }

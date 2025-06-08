@@ -58,7 +58,7 @@ case "$OS_TYPE" in
             xcode-select --install
             log_info "⏳ Please complete the Xcode Command Line Tools installation GUI if it appears."
             log_info "   After installation, you may need to re-run this script."
-            read -p "Press [Enter] to continue after Xcode Command Line Tools are confirmed as installed, or Ctrl+C to exit and re-run later."
+            read -r -p "Press [Enter] to continue after Xcode Command Line Tools are confirmed as installed, or Ctrl+C to exit and re-run later."
             if ! xcode-select -p &> /dev/null; then
                 log_error "❌ Xcode Command Line Tools still not found after attempting installation."
                 log_error "   Please ensure they are fully installed (sometimes requires opening Xcode once) and re-run the script."
@@ -76,7 +76,7 @@ case "$OS_TYPE" in
         log_info "   2. Ensure the Xcode license agreement is accepted by running in your terminal:"
         log_info "      sudo xcodebuild -license accept"
         log_info ""
-        read -p "Press [Enter] to acknowledge these recommendations and continue..."
+        read -r -p "Press [Enter] to acknowledge these recommendations and continue..."
         ;;
 
     "windows")

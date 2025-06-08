@@ -28,7 +28,7 @@ log_info "📁 Created test directory: $TEST_DIR"
 
 # Test 1: Basic startup
 log_info "🚀 Test 1: Basic startup test..."
-timeout 10s "./$HENSURF_BINARY_PATH" \
+if timeout 10s "./$HENSURF_BINARY_PATH" \
     --user-data-dir="$TEST_DIR" \
     --no-first-run \
     --disable-background-timer-updates \
@@ -37,9 +37,7 @@ timeout 10s "./$HENSURF_BINARY_PATH" \
     --headless \
     --dump-dom \
     --virtual-time-budget=1000 \
-    "data:text/html,<html><body><h1>HenSurf Test</h1></body></html>" > "$TEST_DIR/startup_test.html" 2>&1
-
-if [ $? -eq 0 ] && grep -q "HenSurf Test" "$TEST_DIR/startup_test.html"; then
+    "data:text/html,<html><body><h1>HenSurf Test</h1></body></html>" > "$TEST_DIR/startup_test.html" 2>&1 && grep -q "HenSurf Test" "$TEST_DIR/startup_test.html"; then
     log_success "✅ Startup test passed"
 else
     log_error "❌ Startup test failed"
@@ -193,7 +191,7 @@ log_info "🏠 Test 8: Default homepage test..."
 
 if [ -f "$TEST_DIR/homepage_test.html" ] && \
    (grep -q -E "<body(\s[^>]*)?>\s*</body>" "$TEST_DIR/homepage_test.html" || \
-    ( [ $(wc -c <"$TEST_DIR/homepage_test.html") -lt 300 ] && \
+    ( [ "$(wc -c <"$TEST_DIR/homepage_test.html")" -lt 300 ] && \
       grep -q "<head></head>" "$TEST_DIR/homepage_test.html" ) ); then
     log_success "✅ Default homepage test passed (appears to be about:blank)"
 else

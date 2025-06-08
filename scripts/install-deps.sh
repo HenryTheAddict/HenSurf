@@ -5,277 +5,287 @@
 
 set -e
 
-echo "🚀 Installing HenSurf build dependencies..."
+# Source utility functions
+SCRIPT_DIR_REAL_INSTALL_DEPS=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+# shellcheck source=scripts/utils.sh
+source "$SCRIPT_DIR_REAL_INSTALL_DEPS/utils.sh"
+
+log_info "🚀 Installing HenSurf build dependencies..."
+
+# Define Project Root early as it's used by some functions or for clarity
+PROJECT_ROOT=$(cd "$SCRIPT_DIR_REAL_INSTALL_DEPS/.." &>/dev/null && pwd)
 
 # OS detection
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    echo "🍎 Detected macOS"
+OS_TYPE=$(get_os_type)
+case "$OS_TYPE" in
+    "macos")
+        log_info "🍎 Detected macOS"
 
-    # Check if Homebrew is installed
-    if ! command -v brew &> /dev/null; then
-        echo "📦 Installing Homebrew..."
-        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    else
-        echo "✅ Homebrew already installed"
-    fi
-
-    # Update Homebrew
-    echo "🔄 Updating Homebrew..."
-    brew update
-
-    # Install required packages for macOS
-    # Common deps: python3, git, ninja, pkg-config, ccache
-    echo "📦 Installing required packages for macOS (python3, git, ninja, pkg-config, ccache)..."
-    brew install python3 git ninja pkg-config ccache
-
-    # Install Xcode Command Line Tools if not present
-    if ! xcode-select -p &> /dev/null; then
-        echo "🔧 Installing Xcode Command Line Tools..."
-        xcode-select --install
-        echo "⏳ Please complete the Xcode Command Line Tools installation GUI."
-        echo "   After installation, re-run this script."
-        read -p "Press [Enter] to continue after Xcode Command Line Tools are installed, or Ctrl+C to exit and re-run later."
-        if ! xcode-select -p &> /dev/null; then
-            echo "❌ Xcode Command Line Tools still not found. Please re-run the script after installation."
-            exit 1
-        fi
-        echo "✅ Xcode Command Line Tools installation detected."
-    else
-        echo "✅ Xcode Command Line Tools already installed"
-    fi
-
-    echo ""
-    echo "💡 For optimal performance and to avoid issues, please also consider the following manual steps:"
-    echo "   1. Exclude your Chromium/HenSurf checkout directory from Spotlight indexing."
-    echo "      (System Settings -> Siri & Spotlight -> Spotlight Privacy... -> Add your checkout folder)"
-    echo "   2. Ensure the Xcode license agreement is accepted by running in your terminal:"
-    echo "      sudo xcodebuild -license accept"
-    echo ""
-    read -p "Press [Enter] to acknowledge these recommendations and continue..."
-
-elif [[ "$OSTYPE" == "cygwin"* ]] || [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
-    echo "💻 Detected Windows"
-
-    # Python
-    echo "🐍 Checking for Python..."
-    PYTHON_CMD=""
-    if command -v python3 &> /dev/null; then
-        PYTHON_CMD="python3"
-    elif command -v python &> /dev/null; then
-        PYTHON_CMD="python"
-    fi
-
-    if [ -z "$PYTHON_CMD" ]; then
-        echo "❌ Python not found. Please install Python 3.8 or newer."
-        echo "   Visit https://www.python.org/downloads/windows/"
-        echo "   Alternatively, using Chocolatey: choco install python"
-        exit 1
-    else
-        # Python version check logic will be handled later by the common check
-        echo "✅ Python command detected ($PYTHON_CMD)."
-    fi
-
-    # Git (assumed if running in Git Bash, but good to mention)
-    echo "🌐 Checking for Git..."
-    if ! command -v git &> /dev/null; then
-        echo "❌ Git not found. Please install Git for Windows."
-        echo "   Visit https://git-scm.com/download/win"
-        echo "   This script requires Git to be in PATH, especially for depot_tools."
-        exit 1
-    else
-        echo "✅ Git found."
-    fi
-
-    # Ninja
-    echo "🥷 Checking for Ninja..."
-    if ! command -v ninja &> /dev/null; then
-        NINJA_VERSION="1.11.1"
-        NINJA_URL="https://github.com/ninja-build/ninja/releases/download/v${NINJA_VERSION}/ninja-win.zip"
-
-        echo "ℹ️ Ninja not found by command -v ninja."
-        # Determine Project Root relative to this script for tools directory
-        # SCRIPT_DIR is defined later, but we need a local version or assume PWD for this part if SCRIPT_DIR isn't set yet
-        CURRENT_SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-        PROJECT_ROOT_FOR_NINJA=$(cd "$CURRENT_SCRIPT_DIR/.." &>/dev/null && pwd)
-        TOOLS_DIR="$PROJECT_ROOT_FOR_NINJA/tools"
-        NINJA_DIR="$TOOLS_DIR/ninja"
-        NINJA_EXE_PATH="$NINJA_DIR/ninja.exe"
-
-        # Check if we previously downloaded it
-        if [ -f "$NINJA_EXE_PATH" ]; then
-            echo "✅ Ninja found in $NINJA_DIR. Adding to PATH."
-            export PATH="$NINJA_DIR:$PATH"
-            if command -v ninja &> /dev/null; then
-                echo "✅ Ninja configured successfully from $NINJA_DIR."
-            else
-                echo "❌ Failed to configure Ninja from $NINJA_DIR even though ninja.exe exists. Manual check needed."
+        # Check if Homebrew is installed
+        if ! command_exists "brew"; then
+            log_info "📦 Installing Homebrew..."
+            if ! /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; then
+                log_error "Homebrew installation failed. Please install it manually and re-run."
+                exit 1
             fi
         else
-            echo "🤔 Ninja not found in $NINJA_EXE_PATH. Attempting to download..."
-            if ! command -v curl &> /dev/null || ! command -v unzip &> /dev/null; then
-                echo "❌ curl and/or unzip are not installed. Cannot download Ninja automatically."
-                echo "   Please install curl and unzip, then re-run this script,"
-                echo "   or install Ninja manually:"
-                echo "   Using Chocolatey: choco install ninja"
-                echo "   Or download from https://github.com/ninja-build/ninja/releases and add to PATH."
-                echo "   Continuing, but build may fail if Ninja is not made available."
-            else
-                echo "📦 Attempting to download Ninja v${NINJA_VERSION}..."
-                mkdir -p "$NINJA_DIR"
-                if curl -L "$NINJA_URL" -o "$NINJA_DIR/ninja-win.zip"; then
-                    echo "✅ Downloaded ninja-win.zip."
-                    if unzip -oq "$NINJA_DIR/ninja-win.zip" ninja.exe -d "$NINJA_DIR"; then
-                        echo "✅ Unzipped ninja.exe to $NINJA_DIR."
-                        export PATH="$NINJA_DIR:$PATH"
-                        if command -v ninja &> /dev/null; then
-                            echo "✅ Ninja v${NINJA_VERSION} downloaded and configured successfully."
-                        else
-                            echo "❌ Failed to configure Ninja after download. Check PATH and $NINJA_EXE_PATH."
-                        fi
-                        echo "🧹 Cleaning up downloaded zip file..."
-                        rm "$NINJA_DIR/ninja-win.zip"
-                    else
-                        echo "❌ Failed to unzip ninja-win.zip."
-                        echo "   Please install Ninja manually or check your unzip utility."
-                        rm "$NINJA_DIR/ninja-win.zip" # Clean up failed download
-                    fi
+            log_success "✅ Homebrew already installed"
+        fi
+
+        # Update Homebrew
+        log_info "🔄 Updating Homebrew..."
+        if ! brew update; then
+            log_warn "Brew update failed. Continuing, but package installation might use outdated formulae."
+        fi
+
+        # Install required packages for macOS
+        log_info "📦 Installing required packages for macOS (python3, git, ninja, pkg-config, ccache)..."
+        if ! brew install python3 git ninja pkg-config ccache; then
+            log_error "Failed to install one or more Homebrew packages. Please check brew's output."
+            exit 1
+        fi
+        log_success "✅ Successfully installed Homebrew packages."
+
+
+        # Install Xcode Command Line Tools if not present
+        if ! command_exists "xcode-select"; then
+            log_error "xcode-select command not found. This is unexpected on macOS."
+            log_info "Attempting to install Xcode Command Line Tools, but you might need to install Xcode from the App Store first."
+        fi
+
+        if ! xcode-select -p &> /dev/null; then
+            log_info "🔧 Installing Xcode Command Line Tools..."
+            xcode-select --install
+            log_info "⏳ Please complete the Xcode Command Line Tools installation GUI if it appears."
+            log_info "   After installation, you may need to re-run this script."
+            read -p "Press [Enter] to continue after Xcode Command Line Tools are confirmed as installed, or Ctrl+C to exit and re-run later."
+            if ! xcode-select -p &> /dev/null; then
+                log_error "❌ Xcode Command Line Tools still not found after attempting installation."
+                log_error "   Please ensure they are fully installed (sometimes requires opening Xcode once) and re-run the script."
+                exit 1
+            fi
+            log_success "✅ Xcode Command Line Tools installation detected."
+        else
+            log_success "✅ Xcode Command Line Tools already installed"
+        fi
+
+        log_info ""
+        log_info "💡 For optimal performance and to avoid issues, please also consider the following manual steps:"
+        log_info "   1. Exclude your Chromium/HenSurf checkout directory from Spotlight indexing."
+        log_info "      (System Settings -> Siri & Spotlight -> Spotlight Privacy... -> Add your checkout folder)"
+        log_info "   2. Ensure the Xcode license agreement is accepted by running in your terminal:"
+        log_info "      sudo xcodebuild -license accept"
+        log_info ""
+        read -p "Press [Enter] to acknowledge these recommendations and continue..."
+        ;;
+
+    "windows")
+        log_info "💻 Detected Windows"
+
+        # Git (assumed if running in Git Bash, but good to mention)
+        log_info "🌐 Checking for Git..."
+        if ! command_exists "git"; then
+            log_error "❌ Git not found. Please install Git for Windows."
+            log_error "   Visit https://git-scm.com/download/win"
+            log_error "   This script requires Git to be in PATH, especially for depot_tools."
+            exit 1
+        else
+            log_success "✅ Git found."
+        fi
+
+        # Ninja
+        log_info "🥷 Checking for Ninja..."
+        if ! command_exists "ninja"; then
+            NINJA_VERSION="1.11.1"
+            NINJA_URL="https://github.com/ninja-build/ninja/releases/download/v${NINJA_VERSION}/ninja-win.zip"
+
+            log_info "ℹ️ Ninja not found by command_exists \"ninja\"."
+            TOOLS_DIR="$PROJECT_ROOT/tools"
+            NINJA_DIR="$TOOLS_DIR/ninja"
+            NINJA_EXE_PATH="$NINJA_DIR/ninja.exe"
+
+            # Check if we previously downloaded it
+            if [ -f "$NINJA_EXE_PATH" ]; then
+                log_info "✅ Ninja found in $NINJA_DIR. Adding to PATH."
+                export PATH="$NINJA_DIR:$PATH" # Keep local Ninja PATH addition for now
+                if command_exists "ninja"; then
+                    log_success "✅ Ninja configured successfully from $NINJA_DIR."
                 else
-                    echo "❌ Failed to download Ninja from $NINJA_URL."
-                    echo "   Please install Ninja manually."
+                    log_error "❌ Failed to configure Ninja from $NINJA_DIR even though ninja.exe exists. Manual check needed."
+                fi
+            else
+                log_warn "🤔 Ninja not found in $NINJA_EXE_PATH. Attempting to download..."
+                if ! command_exists "curl" || ! command_exists "unzip"; then
+                    log_error "❌ curl and/or unzip are not installed. Cannot download Ninja automatically."
+                    log_error "   Please install curl and unzip, then re-run this script,"
+                    log_error "   or install Ninja manually:"
+                    log_error "   Using Chocolatey: choco install ninja"
+                    log_error "   Or download from https://github.com/ninja-build/ninja/releases and add to PATH."
+                    log_info "   Continuing, but build may fail if Ninja is not made available."
+                else
+                    log_info "📦 Attempting to download Ninja v${NINJA_VERSION}..."
+                    mkdir -p "$NINJA_DIR"
+                    if curl -L "$NINJA_URL" -o "$NINJA_DIR/ninja-win.zip"; then
+                        log_success "✅ Downloaded ninja-win.zip."
+                        if unzip -oq "$NINJA_DIR/ninja-win.zip" ninja.exe -d "$NINJA_DIR"; then
+                            log_success "✅ Unzipped ninja.exe to $NINJA_DIR."
+                            export PATH="$NINJA_DIR:$PATH" # Keep local Ninja PATH addition
+                            if command_exists "ninja"; then
+                                log_success "✅ Ninja v${NINJA_VERSION} downloaded and configured successfully."
+                            else
+                                log_error "❌ Failed to configure Ninja after download. Check PATH and $NINJA_EXE_PATH."
+                            fi
+                            log_info "🧹 Cleaning up downloaded zip file..."
+                            rm "$NINJA_DIR/ninja-win.zip"
+                        else
+                            log_error "❌ Failed to unzip ninja-win.zip."
+                            log_error "   Please install Ninja manually or check your unzip utility."
+                            rm "$NINJA_DIR/ninja-win.zip" # Clean up failed download
+                        fi
+                    else
+                        log_error "❌ Failed to download Ninja from $NINJA_URL."
+                        log_error "   Please install Ninja manually."
+                    fi
                 fi
             fi
+        else
+            log_success "✅ Ninja found."
         fi
-    else
-        echo "✅ Ninja found."
-    fi
 
+        # Visual Studio Build Tools
+        log_info "🔧 Visual Studio Build Tools:"
+        log_info "   Please ensure you have Visual Studio C++ Build Tools installed."
+        log_info "   Required: 'Desktop development with C++' workload."
+        log_info "   Recommended: Visual Studio 2019 (e.g., v16.11.14+) or Visual Studio 2022."
+        log_info "   Chromium's gclient hooks may attempt to manage this if specific environment variables are set (e.g., DEPOT_TOOLS_WIN_TOOLCHAIN=0)."
+        log_info "   If you have issues, ensure VS is correctly installed and discoverable by depot_tools."
+        log_info "   Press [Enter] to acknowledge and continue."
+        read -r
+        ;;
 
-    # Visual Studio Build Tools
-    echo "🔧 Visual Studio Build Tools:"
-    echo "   Please ensure you have Visual Studio C++ Build Tools installed."
-    echo "   Required: 'Desktop development with C++' workload."
-    echo "   Recommended: Visual Studio 2019 (e.g., v16.11.14+) or Visual Studio 2022."
-    echo "   Chromium's gclient hooks may attempt to manage this if specific environment variables are set (e.g., DEPOT_TOOLS_WIN_TOOLCHAIN=0)."
-    echo "   If you have issues, ensure VS is correctly installed and discoverable by depot_tools."
-    echo "   Press [Enter] to acknowledge and continue."
-    read -r
-
-elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    echo "🐧 Detected Linux"
-    if command -v apt-get &> /dev/null; then
-        echo "Distro: Debian/Ubuntu (apt package manager found)"
-        echo "📦 Installing dependencies for Debian/Ubuntu..."
-        sudo apt-get update
-        sudo apt-get install -y python3 git ninja-build pkg-config build-essential libgtk-3-dev libnss3-dev libasound2-dev libcups2-dev libxtst-dev libxss1 libatk1.0-dev libatk-bridge2.0-dev libdrm-dev libgbm-dev libx11-xcb-dev uuid-dev
-    elif command -v dnf &> /dev/null; then
-        echo "Distro: Fedora (dnf package manager found)"
-        echo "📦 Installing dependencies for Fedora..."
-        sudo dnf install -y python3 git ninja-build pkgconf-pkg-config gcc-c++ gtk3-devel nss-devel alsa-lib-devel cups-devel libXtst-devel libXScrnSaver-devel atk-devel at-spi2-atk-devel libdrm-devel libgbm-devel libX11-xcb-devel libuuid-devel
-    elif command -v pacman &> /dev/null; then
-        echo "Distro: Arch Linux (pacman package manager found)"
-        echo "📦 Installing dependencies for Arch Linux..."
-        sudo pacman -Syu --noconfirm --needed base-devel python git ninja pkgconf gtk3 nss alsa-lib cups libxtst libxscrnsaver libatk at-spi2-atk libdrm libgbm libx11 libxcb util-linux
-    else
-        echo "❌ Unsupported Linux distribution or package manager not found."
-        echo "Please install the following dependencies manually:"
-        echo "  python3, git, ninja-build (or ninja), pkg-config, gcc/g++ (build-essential),"
-        echo "  libgtk-3-dev, libnss3-dev, libasound2-dev, libcups2-dev, libxtst-dev,"
-        echo "  libxss1 (or libxscrnsaver), libatk1.0-dev, libatk-bridge2.0-dev, libdrm-dev, libgbm-dev,"
-        echo "  libx11-xcb-dev, uuid-dev (or libuuid-devel or util-linux for uuidgen)"
+    "linux")
+        log_info "🐧 Detected Linux"
+        if command_exists "apt-get"; then
+            log_info "Distro: Debian/Ubuntu (apt package manager found)"
+            log_info "📦 Installing dependencies for Debian/Ubuntu..."
+            sudo apt-get update
+            if ! sudo apt-get install -y python3 git ninja-build pkg-config build-essential libgtk-3-dev libnss3-dev libasound2-dev libcups2-dev libxtst-dev libxss1 libatk1.0-dev libatk-bridge2.0-dev libdrm-dev libgbm-dev libx11-xcb-dev uuid-dev; then
+                log_error "Failed to install dependencies via apt-get. Please check the output."
+                exit 1
+            fi
+            log_success "✅ Successfully installed Debian/Ubuntu dependencies."
+        elif command_exists "dnf"; then
+            log_info "Distro: Fedora (dnf package manager found)"
+            log_info "📦 Installing dependencies for Fedora..."
+            if ! sudo dnf install -y python3 git ninja-build pkgconf-pkg-config gcc-c++ gtk3-devel nss-devel alsa-lib-devel cups-devel libXtst-devel libXScrnSaver-devel atk-devel at-spi2-atk-devel libdrm-devel libgbm-devel libX11-xcb-devel libuuid-devel; then
+                log_error "Failed to install dependencies via dnf. Please check the output."
+                exit 1
+            fi
+            log_success "✅ Successfully installed Fedora dependencies."
+        elif command_exists "pacman"; then
+            log_info "Distro: Arch Linux (pacman package manager found)"
+            log_info "📦 Installing dependencies for Arch Linux..."
+            if ! sudo pacman -Syu --noconfirm --needed base-devel python git ninja pkgconf gtk3 nss alsa-lib cups libxtst libxscrnsaver libatk at-spi2-atk libdrm libgbm libx11 libxcb util-linux; then
+                log_error "Failed to install dependencies via pacman. Please check the output."
+                exit 1
+            fi
+            log_success "✅ Successfully installed Arch Linux dependencies."
+        else
+            log_error "❌ Unsupported Linux distribution or package manager not found (apt-get, dnf, pacman)."
+            log_info "Please install the following dependencies manually:"
+            log_info "  python3, git, ninja-build (or ninja), pkg-config, gcc/g++ (build-essential),"
+            log_info "  libgtk-3-dev, libnss3-dev, libasound2-dev, libcups2-dev, libxtst-dev,"
+            log_info "  libxss1 (or libxscrnsaver), libatk1.0-dev, libatk-bridge2.0-dev, libdrm-dev, libgbm-dev,"
+            log_info "  libx11-xcb-dev, uuid-dev (or libuuid-devel or util-linux for uuidgen)"
+            exit 1
+        fi
+        ;;
+    *)
+        log_error "Unsupported operating system: $OSTYPE (resolved to $OS_TYPE by get_os_type)"
         exit 1
-    fi
-else
-    echo "❌ Unsupported operating system: $OSTYPE"
-    exit 1
-fi
+        ;;
+esac
 
 # Check Python version (common logic for macOS, Linux, and Windows)
-echo "🐍 Checking Python version..."
-# PYTHON_CMD should be set by OS-specific block for Windows
-if [[ -z "$PYTHON_CMD" ]]; then # If not set by Windows block, means it's Linux/macOS
-    if command -v python3 &> /dev/null; then
-        PYTHON_CMD="python3"
-    elif command -v python &> /dev/null; then
-        PYTHON_CMD="python"
-    else
-        echo "❌ Python not found. Please install Python 3.8 or newer."
-        # For Windows, specific instructions were already given.
-        if ! ([[ "$OSTYPE" == "cygwin"* ]] || [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]); then
-            echo "   On macOS: brew install python"
-            echo "   On Linux: sudo apt-get install python3 (or equivalent for your distro)"
-        fi
+log_info "🐍 Checking Python version (requires 3.8+)..."
+if ! check_python_version "3" "8"; then
+    # The check_python_version function already logs detailed errors.
+    # Add any OS-specific advice for installing Python if desired.
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        log_info "   On macOS, you can install Python using: brew install python"
+    elif [[ "$OS_TYPE" == "linux" ]]; then
+        # Add distro-specific advice if possible, or general advice
+        log_info "   On Linux, use your system's package manager, e.g., sudo apt-get install python3 (Debian/Ubuntu) or sudo dnf install python3 (Fedora)."
+    elif [[ "$OS_TYPE" == "windows" ]]; then
+        log_info "   On Windows, download from https://www.python.org/downloads/windows/ or use Chocolatey: choco install python."
+    fi
+    exit 1
+fi
+
+# Depot Tools setup
+DEPOT_TOOLS_DIR=$(get_depot_tools_dir "$PROJECT_ROOT")
+if [ -z "$DEPOT_TOOLS_DIR" ]; then
+    log_error "Failed to determine depot_tools directory path. Exiting."
+    exit 1
+fi
+
+# Check if depot_tools exists, if not, clone it
+if [ ! -d "$DEPOT_TOOLS_DIR" ]; then
+    log_info "📦 depot_tools not found at '$DEPOT_TOOLS_DIR'. Attempting to clone..."
+    PARENT_OF_DEPOT_TOOLS=$(dirname "$DEPOT_TOOLS_DIR")
+    mkdir -p "$PARENT_OF_DEPOT_TOOLS" # Ensure parent directory exists
+
+    # Check for Git before attempting to clone
+    if ! command_exists "git"; then
+        log_error "❌ Git command not found, cannot clone depot_tools. Please install Git and re-run."
         exit 1
     fi
-fi
-
-# Check if PYTHON_CMD is valid
-if ! command -v $PYTHON_CMD &> /dev/null; then
-    echo "❌ Python command '$PYTHON_CMD' not found after OS detection. This is an internal script error."
-    exit 1
-fi
-
-PYTHON_VERSION_FULL=$($PYTHON_CMD --version 2>&1)
-PYTHON_VERSION=$(echo "$PYTHON_VERSION_FULL" | cut -d' ' -f2 | cut -d'.' -f1,2)
-REQUIRED_MAJOR=3
-REQUIRED_MINOR=8
-
-CURRENT_MAJOR=$(echo "$PYTHON_VERSION" | cut -d'.' -f1)
-CURRENT_MINOR=$(echo "$PYTHON_VERSION" | cut -d'.' -f2)
-
-if [ "$CURRENT_MAJOR" -lt "$REQUIRED_MAJOR" ] || { [ "$CURRENT_MAJOR" -eq "$REQUIRED_MAJOR" ] && [ "$CURRENT_MINOR" -lt "$REQUIRED_MINOR" ]; }; then
-    echo "❌ Python version $PYTHON_VERSION ($PYTHON_VERSION_FULL) is too old."
-    echo "   Please install Python $REQUIRED_MAJOR.$REQUIRED_MINOR or newer."
-    echo "   Found at: $($PYTHON_CMD -c 'import sys; print(sys.executable)')"
-    exit 1
-else
-    echo "✅ Python $PYTHON_VERSION ($PYTHON_VERSION_FULL) is compatible (found at $($PYTHON_CMD -c 'import sys; print(sys.executable)'))"
-fi
-
-SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." &>/dev/null && pwd)
-PARENT_OF_PROJECT_ROOT=$(cd "$PROJECT_ROOT/.." &>/dev/null && pwd)
-DEPOT_TOOLS_DIR="$PARENT_OF_PROJECT_ROOT/depot_tools"
-
-if [ ! -d "$DEPOT_TOOLS_DIR" ]; then
-    echo "📦 Downloading depot_tools into $PARENT_OF_PROJECT_ROOT..."
 
     ORIGINAL_PWD=$(pwd)
-    echo "Changing directory to $PARENT_OF_PROJECT_ROOT for cloning depot_tools."
-    cd "$PARENT_OF_PROJECT_ROOT"
-    git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
-    echo "Changing directory back to $ORIGINAL_PWD."
+    log_info "Changing directory to $PARENT_OF_DEPOT_TOOLS for cloning depot_tools."
+    cd "$PARENT_OF_DEPOT_TOOLS"
+    if git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git; then
+        log_success "✅ Successfully cloned depot_tools into $DEPOT_TOOLS_DIR"
+    else
+        log_error "❌ Failed to clone depot_tools. Please check your internet connection and Git setup."
+        cd "$ORIGINAL_PWD" # Go back to original dir before exiting
+        exit 1
+    fi
+    log_info "Changing directory back to $ORIGINAL_PWD."
     cd "$ORIGINAL_PWD"
 else
-    echo "✅ depot_tools already exists at $DEPOT_TOOLS_DIR"
+    log_success "✅ depot_tools already exists at $DEPOT_TOOLS_DIR"
 fi
 
-# Setting PATH for depot_tools
-# For Windows (msys/cygwin), the export syntax is fine.
-# If this script were to be a .bat file, this would be 'set PATH=%DEPOT_TOOLS_DIR%;%PATH%'
-export PATH="$DEPOT_TOOLS_DIR:$PATH"
-echo "🔧 Added depot_tools to PATH for this session: $DEPOT_TOOLS_DIR"
+# Add depot_tools to PATH
+if ! add_depot_tools_to_path "$DEPOT_TOOLS_DIR"; then
+    # Error message is already logged by add_depot_tools_to_path
+    # It also checks for gn and autoninja availability.
+    exit 1
+fi
 
-if [[ "$OSTYPE" == "cygwin"* ]] || [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
-    echo "   (Note: This PATH change is only for the current Git Bash/MSYS session.)"
-    echo "✅ All core dependencies checked for Windows!"
+if [[ "$OS_TYPE" == "windows" ]]; then
+    log_info "   (Note: This PATH change is only for the current Git Bash/MSYS session.)"
+    log_success "✅ All core dependencies checked for Windows!"
 else
-    echo "   (Note: This PATH change is only for the current terminal session.)"
-    echo "✅ All core dependencies installed and depot_tools configured for this session!"
+    log_info "   (Note: This PATH change is only for the current terminal session.)"
+    log_success "✅ All core dependencies installed/checked and depot_tools configured for this session!"
 fi
 
-echo ""
-echo "Next steps:"
-if [[ "$OSTYPE" == "cygwin"* ]] || [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
-    echo "1. IMPORTANT: Add depot_tools to your Windows PATH environment variable permanently if you haven't already."
-    echo "   You can do this through 'Environment Variables' settings in Windows, or by using 'setx' command in cmd.exe (e.g., setx PATH \"%PATH%;$DEPOT_TOOLS_DIR\")."
-    echo "   Restart your Git Bash/MSYS terminal after making permanent changes."
+log_info ""
+log_info "Next steps:"
+if [[ "$OS_TYPE" == "windows" ]]; then
+    log_info "1. IMPORTANT: Add depot_tools to your Windows PATH environment variable permanently if you haven't already."
+    log_info "   You can do this through 'Environment Variables' settings in Windows, or by using 'setx' command in cmd.exe (e.g., setx PATH \"%PATH%;C:\\path\\to\\depot_tools\")."
+    log_info "   Replace C:\\path\\to\\depot_tools with the actual path: $DEPOT_TOOLS_DIR"
+    log_info "   Restart your Git Bash/MSYS terminal after making permanent changes."
 else
-    echo "1. IMPORTANT: Add depot_tools to your shell's startup file (e.g., ~/.bashrc, ~/.zshrc) if you haven't already:"
-    echo "   echo 'export PATH=\"$DEPOT_TOOLS_DIR:\$PATH\"' >> ~/.your_shell_rc_file"
-    echo "   Then, source the file (e.g., source ~/.bashrc) or open a new terminal."
+    log_info "1. IMPORTANT: Add depot_tools to your shell's startup file (e.g., ~/.bashrc, ~/.zshrc) if you haven't already:"
+    log_info "   echo 'export PATH=\"$DEPOT_TOOLS_DIR:\$PATH\"' >> ~/.your_shell_rc_file"
+    log_info "   Then, source the file (e.g., source ~/.bashrc) or open a new terminal."
 fi
-echo "2. Run ./scripts/fetch-chromium.sh to download Chromium source (will use depot_tools from PATH)."
-echo "3. Run ./scripts/apply-patches.sh to apply HenSurf customizations."
-echo "4. Run ./scripts/build.sh to build HenSurf."
-echo ""
-echo "⚠️  Note: The full Chromium build process requires significant disk space (~100GB) and can take several hours."
+log_info "2. Run ./scripts/fetch-chromium.sh to download Chromium source (will use depot_tools from PATH)."
+log_info "3. Run ./scripts/apply-patches.sh to apply HenSurf customizations."
+log_info "4. Run ./scripts/build.sh to build HenSurf."
+log_info ""
+log_warn "⚠️  Note: The full Chromium build process requires significant disk space (~100GB) and can take several hours."

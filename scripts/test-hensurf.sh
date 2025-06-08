@@ -5,24 +5,30 @@
 
 set -e
 
-echo "🧪 Testing HenSurf Browser..."
+# Source utility functions
+SCRIPT_DIR_TEST_HENSURF=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+# shellcheck source=scripts/utils.sh
+source "$SCRIPT_DIR_TEST_HENSURF/utils.sh"
+
+log_info "🧪 Testing HenSurf Browser..."
 
 # Check if HenSurf binary exists
-if [ ! -f "chromium/src/out/HenSurf/chrome" ]; then
-    echo "❌ HenSurf binary not found. Please run ./scripts/build.sh first."
+HENSURF_BINARY_PATH="chromium/src/out/HenSurf/chrome" # Relative to project root
+if [ ! -f "$HENSURF_BINARY_PATH" ]; then
+    log_error "❌ HenSurf binary not found at $HENSURF_BINARY_PATH. Please run ./scripts/build.sh first."
     exit 1
 fi
 
-echo "✅ HenSurf binary found"
+log_success "✅ HenSurf binary found at $HENSURF_BINARY_PATH"
 
 # Create temporary test directory
 TEST_DIR="/tmp/hensurf-test-$(date +%s)"
 mkdir -p "$TEST_DIR"
-echo "📁 Created test directory: $TEST_DIR"
+log_info "📁 Created test directory: $TEST_DIR"
 
 # Test 1: Basic startup
-echo "🚀 Test 1: Basic startup test..."
-timeout 10s ./chromium/src/out/HenSurf/chrome \
+log_info "🚀 Test 1: Basic startup test..."
+timeout 10s "./$HENSURF_BINARY_PATH" \
     --user-data-dir="$TEST_DIR" \
     --no-first-run \
     --disable-background-timer-updates \
@@ -34,16 +40,16 @@ timeout 10s ./chromium/src/out/HenSurf/chrome \
     "data:text/html,<html><body><h1>HenSurf Test</h1></body></html>" > "$TEST_DIR/startup_test.html" 2>&1
 
 if [ $? -eq 0 ] && grep -q "HenSurf Test" "$TEST_DIR/startup_test.html"; then
-    echo "✅ Startup test passed"
+    log_success "✅ Startup test passed"
 else
-    echo "❌ Startup test failed"
-    cat "$TEST_DIR/startup_test.html"
+    log_error "❌ Startup test failed"
+    cat "$TEST_DIR/startup_test.html" # Output HTML for debugging
     exit 1
 fi
 
 # Test 2: Check default search engine
-echo "🔍 Test 2: Default search engine test..."
-timeout 6s ./chromium/src/out/HenSurf/chrome \
+log_info "🔍 Test 2: Default search engine test..."
+timeout 6s "./$HENSURF_BINARY_PATH" \
     --user-data-dir="$TEST_DIR" \
     --no-first-run \
     --headless \
@@ -52,22 +58,22 @@ timeout 6s ./chromium/src/out/HenSurf/chrome \
     "chrome://settings/search" > "$TEST_DIR/search_test.html" 2>&1
 SEARCH_EXIT_CODE=$?
 
-if [ $SEARCH_EXIT_CODE -eq 124 ]; then
-    echo "ℹ️ Search engine test browser process timed out (expected for dump-dom)."
+if [ $SEARCH_EXIT_CODE -eq 124 ]; then # 124 is the exit code for timeout
+    log_info "ℹ️ Search engine test browser process timed out (expected for dump-dom)."
 elif [ $SEARCH_EXIT_CODE -ne 0 ]; then
-    echo "⚠️ Search engine test browser process exited with error code $SEARCH_EXIT_CODE."
+    log_warn "⚠️ Search engine test browser process exited with error code $SEARCH_EXIT_CODE."
 fi
 
 if grep -q -i "duckduckgo\|duck" "$TEST_DIR/search_test.html" 2>/dev/null; then
-    echo "✅ Default search engine test passed (DuckDuckGo detected)"
+    log_success "✅ Default search engine test passed (DuckDuckGo detected)"
 else
-    echo "⚠️  Default search engine test inconclusive (may need manual verification)"
+    log_warn "⚠️  Default search engine test inconclusive (may need manual verification)"
     cat "$TEST_DIR/search_test.html"
 fi
 
 # Test 3: Check for Google services (should be absent)
-echo "🚫 Test 3: Google services removal test..."
-timeout 6s ./chromium/src/out/HenSurf/chrome \
+log_info "🚫 Test 3: Google services removal test..."
+timeout 6s "./$HENSURF_BINARY_PATH" \
     --user-data-dir="$TEST_DIR" \
     --no-first-run \
     --headless \
@@ -79,22 +85,22 @@ timeout 6s ./chromium/src/out/HenSurf/chrome \
 SETTINGS_EXIT_CODE=$?
 
 if [ $SETTINGS_EXIT_CODE -eq 124 ]; then
-    echo "ℹ️ Settings page test browser process timed out (expected for dump-dom)."
+    log_info "ℹ️ Settings page test browser process timed out (expected for dump-dom)."
 elif [ $SETTINGS_EXIT_CODE -ne 0 ]; then
-    echo "⚠️ Settings page test browser process exited with error code $SETTINGS_EXIT_CODE."
+    log_warn "⚠️ Settings page test browser process exited with error code $SETTINGS_EXIT_CODE."
 fi
 
 # Check for absence of Google-related terms
 if grep -q -i "google account\|sync.*google\|sign.*in.*google" "$TEST_DIR/settings_test.html" 2>/dev/null; then
-    echo "⚠️  Google services may still be present (manual verification needed)"
+    log_warn "⚠️  Google services may still be present (manual verification needed)"
     cat "$TEST_DIR/settings_test.html"
 else
-    echo "✅ Google services removal test passed"
+    log_success "✅ Google services removal test passed"
 fi
 
 # Test 4: Privacy settings
-echo "🔒 Test 4: Privacy settings test..."
-timeout 6s ./chromium/src/out/HenSurf/chrome \
+log_info "🔒 Test 4: Privacy settings test..."
+timeout 6s "./$HENSURF_BINARY_PATH" \
     --user-data-dir="$TEST_DIR" \
     --no-first-run \
     --headless \
@@ -104,21 +110,21 @@ timeout 6s ./chromium/src/out/HenSurf/chrome \
 PRIVACY_EXIT_CODE=$?
 
 if [ $PRIVACY_EXIT_CODE -eq 124 ]; then
-    echo "ℹ️ Privacy settings test browser process timed out (expected for dump-dom)."
+    log_info "ℹ️ Privacy settings test browser process timed out (expected for dump-dom)."
 elif [ $PRIVACY_EXIT_CODE -ne 0 ]; then
-    echo "⚠️ Privacy settings test browser process exited with error code $PRIVACY_EXIT_CODE."
+    log_warn "⚠️ Privacy settings test browser process exited with error code $PRIVACY_EXIT_CODE."
 fi
 
 if [ -f "$TEST_DIR/privacy_test.html" ] && [ -s "$TEST_DIR/privacy_test.html" ]; then
-    echo "✅ Privacy settings accessible"
+    log_success "✅ Privacy settings accessible"
 else
-    echo "⚠️  Privacy settings test inconclusive"
+    log_warn "⚠️  Privacy settings test inconclusive"
     cat "$TEST_DIR/privacy_test.html"
 fi
 
 # Test 5: Extension support
-echo "🧩 Test 5: Extension support test..."
-timeout 6s ./chromium/src/out/HenSurf/chrome \
+log_info "🧩 Test 5: Extension support test..."
+timeout 6s "./$HENSURF_BINARY_PATH" \
     --user-data-dir="$TEST_DIR" \
     --no-first-run \
     --headless \
@@ -128,32 +134,32 @@ timeout 6s ./chromium/src/out/HenSurf/chrome \
 EXT_EXIT_CODE=$?
 
 if [ $EXT_EXIT_CODE -eq 124 ]; then
-    echo "ℹ️ Extensions page test browser process timed out (expected for dump-dom)."
+    log_info "ℹ️ Extensions page test browser process timed out (expected for dump-dom)."
 elif [ $EXT_EXIT_CODE -ne 0 ]; then
-    echo "⚠️ Extensions page test browser process exited with error code $EXT_EXIT_CODE."
+    log_warn "⚠️ Extensions page test browser process exited with error code $EXT_EXIT_CODE."
 fi
 
 if [ -f "$TEST_DIR/extensions_test.html" ] && [ -s "$TEST_DIR/extensions_test.html" ]; then
-    echo "✅ Extensions page accessible"
+    log_success "✅ Extensions page accessible"
 else
-    echo "⚠️  Extensions test inconclusive"
+    log_warn "⚠️  Extensions test inconclusive"
     cat "$TEST_DIR/extensions_test.html"
 fi
 
 # Test 6: Version information
-echo "ℹ️  Test 6: Version information..."
-VERSION_OUTPUT=$(./chromium/src/out/HenSurf/chrome --version 2>&1 || echo "Version check failed")
-echo "Version: $VERSION_OUTPUT"
+log_info "ℹ️  Test 6: Version information..."
+VERSION_OUTPUT=$("./$HENSURF_BINARY_PATH" --version 2>&1 || echo "Version check failed")
+log_info "Version: $VERSION_OUTPUT"
 
 if echo "$VERSION_OUTPUT" | grep -q -i "hensurf\|chromium"; then
-    echo "✅ Version information available"
+    log_success "✅ Version information available"
 else
-    echo "⚠️  Version information test inconclusive"
+    log_warn "⚠️  Version information test inconclusive"
 fi
 
 # Test 7: Network connectivity test
-echo "🌐 Test 7: Network connectivity test..."
-timeout 8s ./chromium/src/out/HenSurf/chrome \
+log_info "🌐 Test 7: Network connectivity test..."
+timeout 8s "./$HENSURF_BINARY_PATH" \
     --user-data-dir="$TEST_DIR" \
     --no-first-run \
     --headless \
@@ -163,21 +169,21 @@ timeout 8s ./chromium/src/out/HenSurf/chrome \
 NET_EXIT_CODE=$?
 
 if [ $NET_EXIT_CODE -eq 124 ]; then
-    echo "ℹ️ Network test browser process timed out (expected for dump-dom)."
+    log_info "ℹ️ Network test browser process timed out (expected for dump-dom)."
 elif [ $NET_EXIT_CODE -ne 0 ]; then
-    echo "⚠️ Network test browser process exited with error code $NET_EXIT_CODE."
+    log_warn "⚠️ Network test browser process exited with error code $NET_EXIT_CODE."
 fi
 
 if grep -q -i "duckduckgo\|search" "$TEST_DIR/network_test.html" 2>/dev/null; then
-    echo "✅ Network connectivity test passed"
+    log_success "✅ Network connectivity test passed"
 else
-    echo "⚠️  Network connectivity test failed (may be network issue)"
+    log_warn "⚠️  Network connectivity test failed (may be network issue or site structure change)"
     cat "$TEST_DIR/network_test.html"
 fi
 
 # Test 8: Default homepage test (should be about:blank)
-echo "🏠 Test 8: Default homepage test..."
-./chromium/src/out/HenSurf/chrome \
+log_info "🏠 Test 8: Default homepage test..."
+"./$HENSURF_BINARY_PATH" \
     --user-data-dir="$TEST_DIR/homepage-profile" \
     --no-first-run \
     --headless \
@@ -185,57 +191,53 @@ echo "🏠 Test 8: Default homepage test..."
     --virtual-time-budget=500 \
     > "$TEST_DIR/homepage_test.html" 2>&1
 
-# Check for characteristics of about:blank (empty title, empty body, or very minimal content)
-# An empty body tag `<body></body>` is a strong indicator.
-# Or check that the html is very short, less than, say, 300 bytes.
 if [ -f "$TEST_DIR/homepage_test.html" ] && \
    (grep -q -E "<body(\s[^>]*)?>\s*</body>" "$TEST_DIR/homepage_test.html" || \
     ( [ $(wc -c <"$TEST_DIR/homepage_test.html") -lt 300 ] && \
       grep -q "<head></head>" "$TEST_DIR/homepage_test.html" ) ); then
-    echo "✅ Default homepage test passed (appears to be about:blank)"
+    log_success "✅ Default homepage test passed (appears to be about:blank)"
 else
-    echo "❌ Default homepage test failed (DOM does not look like about:blank)"
+    log_error "❌ Default homepage test failed (DOM does not look like about:blank)"
     cat "$TEST_DIR/homepage_test.html"
-    # exit 1 # Optional: decide if this failure is critical
+    # exit 1 # Optional: decide if this failure is critical. For now, it logs error and continues.
 fi
 
 
 # Performance test
-echo "⚡ Test 9: Performance test..."
-START_TIME=$(date +%s%N)
-./chromium/src/out/HenSurf/chrome \
+log_info "⚡ Test 9: Performance test..."
+START_TIME_PERF=$(date +%s%N) # Renamed to avoid conflict
+"./$HENSURF_BINARY_PATH" \
     --user-data-dir="$TEST_DIR" \
     --no-first-run \
     --headless \
     --dump-dom \
     --virtual-time-budget=1000 \
     "data:text/html,<html><body>Performance Test</body></html>" > /dev/null 2>&1
-END_TIME=$(date +%s%N)
-DURATION=$(( (END_TIME - START_TIME) / 1000000 ))
-echo "✅ Performance test completed in ${DURATION}ms"
+END_TIME_PERF=$(date +%s%N) # Renamed to avoid conflict
+DURATION=$(( (END_TIME_PERF - START_TIME_PERF) / 1000000 ))
+log_success "✅ Performance test completed in ${DURATION}ms"
 
 # Cleanup
-echo "🧹 Cleaning up test directory..."
+log_info "🧹 Cleaning up test directory: $TEST_DIR"
 rm -rf "$TEST_DIR"
+log_success "✅ Test directory cleaned up."
 
-echo ""
-echo "🎉 HenSurf testing completed!"
-echo ""
-echo "📋 Test Summary:"
-echo "   ✅ Basic functionality: Working"
-echo "   ✅ Privacy features: Configured"
-echo "   ✅ Google services: Removed"
-echo "   ✅ Extensions: Supported"
-echo "   ✅ Performance: Good"
-echo ""
-echo "🚀 HenSurf is ready to use!"
-echo ""
-echo "To run HenSurf:"
-if [ -d "chromium/src/out/HenSurf/HenSurf.app" ]; then
-    echo "   open chromium/src/out/HenSurf/HenSurf.app"
+log_info "🎉 HenSurf testing completed!"
+log_info "📋 Test Summary:"
+log_info "   ✅ Basic functionality: Working"
+log_info "   ✅ Privacy features: Configured"
+log_info "   ✅ Google services: Removed"
+log_info "   ✅ Extensions: Supported"
+log_info "   ✅ Performance: Good"
+
+log_info "🚀 HenSurf is ready to use!"
+log_info "To run HenSurf (from project root):"
+if [ -d "$HENSURF_BINARY_PATH.app" ]; then # macOS .app bundle check
+    log_info "   open $HENSURF_BINARY_PATH.app"
+elif [ -d "chromium/src/out/HenSurf/HenSurf.app" ]; then # Check explicit path for macOS app
+    log_info "   open chromium/src/out/HenSurf/HenSurf.app"
 else
-    echo "   ./chromium/src/out/HenSurf/chrome"
+    log_info "   ./$HENSURF_BINARY_PATH"
 fi
-echo ""
-echo "For more testing options:"
-echo "   ./chromium/src/out/HenSurf/chrome --help"
+log_info "For more testing options:"
+log_info "   ./$HENSURF_BINARY_PATH --help"

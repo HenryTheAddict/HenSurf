@@ -88,37 +88,16 @@ Building Chromium (and thus HenSurf) on Windows has specific prerequisites and r
     This script applies HenSurf's modifications to the Chromium source.
 6.  **Build HenSurf:**
     ```bash
-    ./scripts/interactive_build.sh
+    ./scripts/build.sh
     ```
-    This script provides an interactive menu to choose your build target (e.g., Native OS, Linux x64, Windows x64, macOS). This is the **recommended** way to build HenSurf.
-    The build process is very lengthy (can take multiple hours, or even days depending on your CPU and RAM. Please have more than 16GB!).
+    This compiles the browser. This is also a very very very lengthy process (can take multiple hours, or even hundreds! depending on your CPU and RAM. Please have more then 16GB!).
 
-**Output Directory Structure:**
+**Running HenSurf on Windows:**
 
-Builds for different targets will now reside in separate, target-specific directories under `chromium/src/out/`. This allows you to maintain multiple builds for different operating systems or architectures simultaneously.
-
-Examples of output directory names:
-*   `HenSurf-linux-x64`
-*   `HenSurf-mac-arm64`
-*   `HenSurf-mac-x64`
-*   `HenSurf-win-x64`
-
-If you run `scripts/build.sh` directly without `HENSURF_` environment variables, it will build for your native OS and architecture in a directory like `HenSurf-<your_os>-<your_arch>`.
-
-**Running HenSurf:**
-
-After a successful build, the main executable and any installers will be located within the target-specific output directory. For example:
-
-*   **Windows:**
-    *   Executable: `chromium/src/out/HenSurf-win-x64/chrome.exe`
-    *   Installer (if built): `chromium/src/out/HenSurf-win-x64/mini_installer.exe` or `setup.exe`
-*   **macOS:**
-    *   App Bundle: `chromium/src/out/HenSurf-mac-arm64/HenSurf.app` (for ARM64) or `chromium/src/out/HenSurf-mac-x64/HenSurf.app` (for Intel x64)
-    *   Installer (if built): `chromium/src/out/HenSurf-mac-<arch>/*.dmg`
-*   **Linux:**
-    *   Executable: `chromium/src/out/HenSurf-linux-x64/chrome`
-
-Always replace `<os>` and `<arch>` with the specific target you built for.
+*   After a successful build, the main executable will be located at:
+    `chromium/src/out/HenSurf/chrome.exe`
+*   An installer might also be created (the name can vary):
+    `chromium/src/out/HenSurf/mini_installer.exe` or `chromium/src/out/HenSurf/setup.exe`
 
 **Important Notes for Windows Builds:**
 
@@ -130,43 +109,28 @@ Always replace `<os>` and `<arch>` with the specific target you built for.
 
 ## Quick Start
 
-The following steps are a general guide. Windows users, please refer to the "Building on Windows" section above for specific Windows prerequisites and detailed environment setup. For all users, the new interactive build script is the recommended way to compile HenSurf.
+The following steps are a general guide. Windows users, please refer to the "Building on Windows" section above for specific prerequisites and detailed environment setup.
 
-1.  **Install Dependencies:**
-    ```bash
-    ./scripts/install-deps.sh
-    ```
-    This script will guide you through initial setup, including `depot_tools`. Pay attention to its output, especially for Windows setup.
+1. Install dependencies:
+   ```bash
+   ./scripts/install-deps.sh
+   ```
+   This script will guide you through initial setup, including `depot_tools`.
 
-2.  **Download Chromium Source Code:**
-    ```bash
-    ./scripts/fetch-chromium.sh
-    ```
-    This downloads the entire Chromium source. It's a large download and can take a significant amount of time.
+2. Download Chromium source:
+   ```bash
+   ./scripts/fetch-chromium.sh
+   ```
 
-3.  **Apply HenSurf Customizations:**
-    ```bash
-    ./scripts/apply-patches.sh
-    ```
-    This script applies HenSurf's modifications to the Chromium source code.
+3. Apply HenSurf patches:
+   ```bash
+   ./scripts/apply-patches.sh
+   ```
 
-4.  **Build HenSurf (Recommended Method):**
-    ```bash
-    ./scripts/interactive_build.sh
-    ```
-    This script presents a menu to choose your build target:
-    *   **1. Native OS:** Automatically detects your current operating system and CPU architecture (e.g., `arm64` or `x64` on macOS).
-    *   **2. Linux (x64):** Cross-compiles for Linux x64.
-    *   **3. Windows (x64):** Cross-compiles for Windows x64.
-    *   **4. macOS (Intel x64):** Cross-compiles for macOS on Intel x64.
-    *   **5. macOS (ARM64):** Cross-compiles for macOS on ARM64 (Apple Silicon).
-    *   **6. macOS (Both Intel x64 and ARM64):** Builds for both macOS architectures. It will build for your native Mac architecture first, then the other.
-    *   **7. Exit:** Cancels the build.
-
-    The build process is very lengthy and resource-intensive. Output will be in a target-specific directory like `chromium/src/out/HenSurf-<os>-<arch>`.
-
-5.  **Alternative Build Method (`build.sh`):**
-    You can still invoke `scripts/build.sh` directly. If run without specific `HENSURF_TARGET_OS`, `HENSURF_TARGET_CPU`, or `HENSURF_OUTPUT_DIR` environment variables, it will default to building for your native OS and architecture, placing artifacts in a directory like `chromium/src/out/HenSurf-<native_os>-<native_arch>`. For more complex scenarios or CI, `build.sh` can be used with these environment variables to precisely control the build target and output location.
+4. Build HenSurf:
+   ```bash
+   ./scripts/build.sh
+   ```
 
 ## Project Structure
 
@@ -180,8 +144,7 @@ HenSurf/
 │   ├── fetch-chromium.sh  # Download Chromium source
 │   ├── apply-patches.sh   # Apply HenSurf customizations
 │   ├── setup-logo.sh      # Integrate HenSurf logo
-    ├── build.sh           # Core build script (can be parameterized)
-    ├── interactive_build.sh # Recommended interactive build script
+│   ├── build.sh           # Build the browser
 │   └── test-hensurf.sh    # Test the built browser
 ├── patches/               # Source code modifications
 │   ├── remove-ai-features.patch
@@ -224,16 +187,10 @@ If you encounter issues while building or running HenSurf, here are some common 
     ```bash
     ./scripts/install-deps.sh
     ```
-*   **Clean Build Directory**: Sometimes, previous build artifacts can cause issues. If you suspect a corrupted build state, you can remove the specific target output directory before rebuilding. For example, if your Linux x64 build failed:
-    ```bash
-    # Be careful with rm -rf!
-    rm -rf chromium/src/out/HenSurf-linux-x64
-    ```
-    Then, re-run `scripts/interactive_build.sh` or `scripts/build.sh`.
-*   **Check Logs**: Build and runtime logs can provide valuable information about what went wrong. Look for error messages in the console output. HenSurf build logs are now located in the target-specific output directory, e.g.:
-    `chromium/src/out/HenSurf-<os>-<arch>/build.log`
-*   **Disk Space**: Ensure you have sufficient free disk space (at least 150GB recommended, more if building for multiple targets) as Chromium's source and build files are very large.
-*   **Memory Usage**: Building Chromium is memory-intensive. If the build fails with errors related to memory, ensure you have enough RAM (16GB+ recommended, 32GB+ for a smoother experience) and close other memory-heavy applications.
+*   **Clean Build Directory**: Sometimes, previous build artifacts can cause issues. Clean your build directory (typically `chromium/src/out/HenSurf`) and try again.
+*   **Check Logs**: Build and runtime logs can provide valuable information about what went wrong. Look for error messages in the console output. HenSurf build logs are typically found in `chromium/src/out/HenSurf/build.log`.
+*   **Disk Space**: Ensure you have sufficient free disk space (at least 150GB recommended) as Chromium's source and build files are very large.
+*   **Memory Usage**: Building Chromium is memory-intensive. If the build fails with errors related to memory, ensure you have enough RAM (16GB+ recommended) and close other memory-heavy applications.
 *   **Consult Chromium Documentation**: For issues related to the underlying Chromium build system, the official [Chromium build documentation](https://www.chromium.org/developers/how-tos/get-the-code/) can be a helpful resource.
 
 ## Contributing

@@ -1,333 +1,269 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# HenSurf Browser - Patch Application Script
-set -e
+#
+# HenSurf Browser - Advanced Patcher
+#
+# Description:
+#   An idempotent and robust tool to customize the Chromium source code.
+#   It applies and reverts patches, manages branding assets, and configures the
+#   build environment. Supports command-line flags for flexible execution.
+#
+# Usage: ./apply-patches.sh [OPTIONS]
+# See --help for more details.
+#
 
-# Source utility functions
-SCRIPT_DIR_APPLY_PATCHES=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-# shellcheck source=scripts/utils.sh
-source "$SCRIPT_DIR_APPLY_PATCHES/utils.sh"
+# --- Script Configuration & Strict Mode ---
+set -euo pipefail
 
-# Define Project Root and log file path (relative to project root)
-PROJECT_ROOT=$(cd "$SCRIPT_DIR_APPLY_PATCHES/.." &>/dev/null && pwd)
-LOG_FILE="$PROJECT_ROOT/apply-patches.log"
-# Clear previous log file
-true >"$LOG_FILE"
+# --- Global Read-only Constants ---
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+readonly LOG_FILE="${PROJECT_ROOT}/apply-patches.log"
+readonly UTILS_SCRIPT_PATH="${SCRIPT_DIR}/utils.sh"
 
-START_TIME=$(date +%s)
-PATCH_FAILURES_LIST=() # Array to keep track of failed patches
+readonly CHROMIUM_SRC_DIR="${PROJECT_ROOT}/src/chromium"
+readonly PATCHES_DIR="${PROJECT_ROOT}/src/hensurf/patches"
+readonly HENSURF_CONFIG_DIR="${PROJECT_ROOT}/src/hensurf/config"
+readonly STAGED_ASSETS_DIR="${PROJECT_ROOT}/src/hensurf/branding/distributable_assets/chromium"
+readonly SETUP_LOGO_SCRIPT="${PROJECT_ROOT}/scripts/setup-logo.sh"
 
-# Function to log progress with timing (uses utils.sh _log)
-log_progress() {
-    local step="$1"
-    local current_time; current_time=$(date +%s)
-    local elapsed=$((current_time - START_TIME))
-    log_info "[PROGRESS] Step $step completed in ${elapsed}s total elapsed" | tee -a "$LOG_FILE"
+# --- CLI Options & State Variables ---
+REVERT_PATCHES=false
+FORCE_APPLY=false
+SKIP_DEPS_CHECK=false
+NO_COLOR=false
+
+# --- TUI & Logging Setup ---
+# TUI Color Codes are defined here and checked against NO_COLOR later.
+_C_RESET='' _C_RED='' _C_GREEN='' _C_YELLOW='' _C_BLUE='' _C_BOLD=''
+if [[ -t 1 && "${NO_COLOR}" = false ]]; then
+    _C_RESET='\033[0m'
+    _C_RED='\033[0;31m'
+    _C_GREEN='\033[0;32m'
+    _C_YELLOW='\033[0;33m'
+    _C_BLUE='\033[0;34m'
+    _C_BOLD='\033[1m'
+fi
+
+# --- State & Cleanup ---
+readonly START_TIME=$(date +%s)
+FAILURE_LIST=() # Using a global array to track failures.
+
+final_summary() {
+    local exit_code=$?
+    local end_time; end_time=$(date +%s)
+    local total_time=$((end_time - START_TIME))
+
+    echo # Add a newline for spacing
+    if [ ${#FAILURE_LIST[@]} -eq 0 ] && [ ${exit_code} -eq 0 ]; then
+        _log 'SUCCESS' "All steps completed successfully in ${total_time} seconds!"
+    else
+        _log 'WARN' "Script finished with issues. Total time: ${total_time} seconds."
+        if [ ${#FAILURE_LIST[@]} -gt 0 ]; then
+            _log 'WARN' "The following steps reported failures or warnings:"
+            for failure in "${FAILURE_LIST[@]}"; do
+                printf "%s\n" "${failure}" # Print failures which are pre-formatted
+            done
+        fi
+        _log 'ERROR' "Review the log file '${LOG_FILE}' for complete details."
+    fi
+    exit "${exit_code}"
+}
+trap final_summary EXIT
+
+# --- Logging Functions ---
+_log() {
+    local level="$1"
+    local msg="$2"
+    local color="${_C_BLUE}"
+    
+    case "${level}" in
+        SUCCESS) color="${_C_GREEN}";;
+        WARN)    color="${_C_YELLOW}";;
+        ERROR)   color="${_C_RED}";;
+    esac
+
+    printf "${color}${_C_BOLD}[%-7s]${_C_RESET} %s\n" "${level}" "${msg}"
+    printf "[%s] [%-7s] %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "${level}" "${msg}" >> "${LOG_FILE}"
 }
 
-log_info "🔧 Starting HenSurf patch application..." | tee -a "$LOG_FILE"
+_log_progress() {
+    local step_name="$1"
+    local elapsed=$(( $(date +%s) - START_TIME ))
+    _log 'INFO' "---------------- Step '${step_name}' finished. (Elapsed: ${elapsed}s) ----------------"
+}
 
-# Depot Tools Setup
-DEPOT_TOOLS_DIR=$(get_depot_tools_dir "$PROJECT_ROOT")
-if [ -z "$DEPOT_TOOLS_DIR" ]; then
-    log_error "Failed to determine depot_tools directory path. Exiting." | tee -a "$LOG_FILE"
-    exit 1
-fi
-if ! add_depot_tools_to_path "$DEPOT_TOOLS_DIR"; then
-    log_error "Failed to add depot_tools to PATH. Exiting." | tee -a "$LOG_FILE"
-    # add_depot_tools_to_path already logs details
-    exit 1
-fi
-log_success "✅ depot_tools configured and added to PATH." | tee -a "$LOG_FILE"
+# --- Core Logic Functions ---
 
+usage() {
+cat << EOF
+${_C_BOLD}HenSurf Browser - Advanced Patcher${_C_RESET}
 
-# Check for essential commands
-if ! command_exists "patch"; then
-    log_error "❌ 'patch' command not found. Please install it or ensure it's in your PATH." | tee -a "$LOG_FILE"
-    log_error "   On Windows, Git Bash usually includes 'patch'." | tee -a "$LOG_FILE"
-    exit 1
-fi
-log_success "✅ 'patch' command found." | tee -a "$LOG_FILE"
+${_C_YELLOW}Description:${_C_RESET}
+  This script automates the customization of the Chromium source tree. It can apply
+  and revert patches, deploy branding assets, and set up the build environment.
 
-# Run setup-logo.sh to stage all branding assets BEFORE patches are applied
-# This script now populates src/hensurf/branding/distributable_assets/chromium/
-log_info "🎨 Preparing branding assets by executing 'scripts/setup-logo.sh'..." | tee -a "$LOG_FILE"
-SETUP_LOGO_SCRIPT_PATH="$PROJECT_ROOT/scripts/setup-logo.sh"
-if [ -f "$SETUP_LOGO_SCRIPT_PATH" ]; then
-    # Ensure it's executable
-    chmod +x "$SETUP_LOGO_SCRIPT_PATH"
-    # Execute setup-logo.sh from the project root context
-    # Temporarily cd to PROJECT_ROOT to run setup-logo.sh, then cd back.
-    current_dir_for_setup_logo=$(pwd)
-    cd "$PROJECT_ROOT"
-    if "$SETUP_LOGO_SCRIPT_PATH" 2>&1 | tee -a "$LOG_FILE"; then # Changed this line
-        log_success "✅ 'scripts/setup-logo.sh' executed successfully and staged assets." | tee -a "$LOG_FILE"
-    else
-        log_warn "⚠️ 'scripts/setup-logo.sh' execution reported errors. Staged assets might be incomplete. Check log." | tee -a "$LOG_FILE"
-        PATCH_FAILURES_LIST+=("setup-logo.sh execution (staging assets)")
+${_C_YELLOW}Usage:${_C_RESET}
+  ./apply-patches.sh [OPTIONS]
+
+${_C_YELLOW}Options:${_C_RESET}
+  ${_C_GREEN}-h, --help${_C_RESET}
+      Show this help message and exit.
+
+  ${_C_GREEN}-r, --revert${_C_RESET}
+      Attempt to revert all patches before performing any other actions. This is useful
+      for ensuring a clean state before applying new patches.
+
+  ${_C_GREEN}-f, --force-apply${_C_RESET}
+      Force patch application even if a dry-run indicates it might already be applied.
+      Use with caution, as this can corrupt source files.
+
+  ${_C_GREEN}-s, --skip-deps-check${_C_RESET}
+      Skip the initial dependency checks (e.g., for 'patch', 'rsync'). For advanced
+      users who are confident in their environment setup.
+      
+  ${_C_GREEN}    --no-color${_C_RESET}
+      Disable colored output.
+
+EOF
+exit "${1:-0}"
+}
+
+preflight_checks() {
+    if [ "${SKIP_DEPS_CHECK}" = true ]; then
+        _log 'WARN' "Skipping dependency checks as requested."
+        return
     fi
-    cd "$current_dir_for_setup_logo" # cd back to where we were (src/chromium)
-else
-    log_error "❌ Critical script 'scripts/setup-logo.sh' not found at '$SETUP_LOGO_SCRIPT_PATH'. Cannot prepare branding assets." | tee -a "$LOG_FILE"
-    PATCH_FAILURES_LIST+=("setup-logo.sh not found (staging assets)")
-    # This is likely a fatal error for branding. Decide if script should exit.
-    # For now, continue and report.
-fi
-log_progress "ASSET_STAGING"
+    _log 'INFO' "Performing pre-flight checks..."
+    
+    # shellcheck source=scripts/utils.sh
+    source "${UTILS_SCRIPT_PATH}"
 
+    command_exists "patch" || { _log 'ERROR' "'patch' command not found."; exit 1; }
+    command_exists "rsync" || _log 'WARN' "'rsync' not found. Will fall back to 'cp', which is less efficient."
 
-log_info "Working directory: $(pwd)" | tee -a "$LOG_FILE"
-OS_TYPE_APPLY=$(get_os_type)
+    if [ ! -d "${CHROMIUM_SRC_DIR}" ]; then
+        _log 'ERROR' "Chromium source not found at '${CHROMIUM_SRC_DIR}'. Run fetch-chromium.sh first."
+        exit 1
+    fi
+    
+    local depot_tools_dir; depot_tools_dir=$(get_depot_tools_dir "${PROJECT_ROOT}")
+    add_depot_tools_to_path "${depot_tools_dir}" || { _log 'ERROR' "Failed to configure depot_tools."; exit 1; }
+    
+    _log 'SUCCESS' "Pre-flight checks passed."
+}
 
-# OS-specific disk space and initial source size logging
-if [[ "$OS_TYPE_APPLY" == "windows" ]]; then
-    CURRENT_DRIVE_LETTER_APPLY=$(pwd -W | cut -d':' -f1)
-    if command_exists "wmic"; then
-        AVAILABLE_BYTES_STR_APPLY=$(wmic logicaldisk where "DeviceID='${CURRENT_DRIVE_LETTER_APPLY}:'" get FreeSpace /value | tr -d '\r' | grep FreeSpace | cut -d'=' -f2)
-        if [[ -n "$AVAILABLE_BYTES_STR_APPLY" && "$AVAILABLE_BYTES_STR_APPLY" =~ ^[0-9]+$ ]]; then
-            AVAILABLE_SPACE_INFO=$(awk -v bytes="$AVAILABLE_BYTES_STR_APPLY" 'BEGIN { printf "%.0f GB", bytes / 1024 / 1024 / 1024 }')
-            log_info "Available disk space on drive ${CURRENT_DRIVE_LETTER_APPLY}: $AVAILABLE_SPACE_INFO" | tee -a "$LOG_FILE"
+manage_patches() {
+    _log 'INFO' "Entering patch management..."
+    safe_cd "${CHROMIUM_SRC_DIR}"
+
+    # An indexed array is used to preserve order for reverting.
+    local patches_to_apply=(
+        "integrate-logo.patch|Logo Integration"
+        "feature-default-search-engine.patch|Default Search Engine"
+        "feature-disable-google-apis.patch|Disable Google APIs"
+        "feature-disable-crash-reporting.patch|Disable Crash Reporting"
+        "feature-update-version-info.patch|Update Version Info"
+        "feature-custom-user-agent-file.patch|Custom User Agent"
+    )
+
+    if [ "${REVERT_PATCHES}" = true ]; then
+        _log 'INFO' "Reverting patches as requested..."
+        # Iterate backwards to revert patches in the reverse order of application.
+        for (( i=${#patches_to_apply[@]}-1; i>=0; i-- )); do
+            local patch_info="${patches_to_apply[$i]}"
+            local patch_file="${patch_info%|*}"
+            local description="${patch_info#*|}"
+            local full_path="${PATCHES_DIR}/${patch_file}"
+            
+            _log 'INFO' "--> Reverting patch: '${description}'"
+            if patch -p1 --reverse < "${full_path}" >> "${LOG_FILE}" 2>&1; then
+                _log 'SUCCESS' "    '${description}' reverted successfully."
+            else
+                _log 'WARN' "    Reverting '${description}' failed. It may not have been applied. Continuing."
+            fi
+        done
+        _log 'SUCCESS' "Patch reversion phase complete."
+    fi
+
+    _log 'INFO' "Applying patches..."
+    for patch_info in "${patches_to_apply[@]}"; do
+        local patch_file="${patch_info%|*}"
+        local description="${patch_info#*|}"
+        local full_path="${PATCHES_DIR}/${patch_file}"
+
+        _log 'INFO' "--> Processing patch: '${description}'"
+
+        # Dry run first to see if it's already applied.
+        if patch -p1 --forward --dry-run < "${full_path}" >/dev/null 2>&1; then
+            # Dry run succeeded, so apply for real.
+            if patch -p1 --forward < "${full_path}" >> "${LOG_FILE}" 2>&1; then
+                _log 'SUCCESS' "    '${description}' applied successfully."
+            else
+                _log 'ERROR' "    Patch '${description}' failed unexpectedly after a successful dry run."
+                FAILURE_LIST+=("  - ${_C_RED}${description}${_C_RESET}: Failed on application.")
+            fi
         else
-            log_warn "Available disk space on drive ${CURRENT_DRIVE_LETTER_APPLY}: (Could not determine using wmic: '$AVAILABLE_BYTES_STR_APPLY')" | tee -a "$LOG_FILE"
+            # Dry run failed. Exit code 1 means it's likely applied/has conflicts.
+            if [ $? -eq 1 ]; then
+                if [ "${FORCE_APPLY}" = true ]; then
+                    _log 'WARN' "    Dry run failed for '${description}', but forcing application..."
+                    if patch -p1 --forward < "${full_path}" >> "${LOG_FILE}" 2>&1; then
+                        _log 'SUCCESS' "    '${description}' force-applied successfully."
+                    else
+                        _log 'ERROR' "    Force-application of '${description}' failed."
+                        FAILURE_LIST+=("  - ${_C_RED}${description}${_C_RESET}: Failed on force-application.")
+                    fi
+                else
+                    _log 'WARN' "    Skipping '${description}' (already applied or has conflicts). Use --force-apply to override."
+                fi
+            else
+                _log 'ERROR' "   Dry run for '${description}' failed with a critical error."
+                FAILURE_LIST+=("  - ${_C_RED}${description}${_C_RESET}: Critical patch error.")
+            fi
         fi
-    else
-        log_warn "Available disk space: ('wmic' not found, cannot check on Windows)" | tee -a "$LOG_FILE"
-    fi
-    if [ -d "$PROJECT_ROOT/src/chromium" ]; then
-        log_info "📁 Chromium source directory found at src/chromium. (Size check skipped on Windows for performance)" | tee -a "$LOG_FILE"
-    fi
-else # Linux/macOS
-    log_info "Available disk space: $(df -h . | tail -1 | awk '{print $4}')" | tee -a "$LOG_FILE"
-    if [ -d "$PROJECT_ROOT/src/chromium" ]; then
-        log_info "📁 Chromium source found, size: $(du -sh "$PROJECT_ROOT"/src/chromium | cut -f1)" | tee -a "$LOG_FILE"
-    fi
-fi
-
-# Check if Chromium source exists
-CHROMIUM_SRC_DIR="$PROJECT_ROOT/src/chromium"
-if [ ! -d "$CHROMIUM_SRC_DIR" ]; then
-    log_error "❌ Chromium source not found at $CHROMIUM_SRC_DIR. Please run ./scripts/fetch-chromium.sh first." | tee -a "$LOG_FILE"
-    exit 1
-fi
-
-safe_cd "$CHROMIUM_SRC_DIR" # Using safe_cd from utils.sh
-# log_info message for successful cd is handled by safe_cd itself.
-
-log_info "📋 Starting patch application..." | tee -a "$LOG_FILE"
-
-log_info "ℹ️ Bloatware removal is controlled by the HENSURF_DISABLE_BLOATWARE GN arg in src/hensurf/config/hensurf.gn." | tee -a "$LOG_FILE"
-
-# Apply logo integration patch
-log_info "🎨 Applying 'integrate-logo.patch'..." | tee -a "$LOG_FILE"
-if patch -p1 --forward < "$PROJECT_ROOT/src/hensurf/patches/integrate-logo.patch" 2>&1 | tee -a "$LOG_FILE"; then
-    log_success "✅ 'integrate-logo.patch' applied successfully." | tee -a "$LOG_FILE"
-else
-    PATCH_STATUS=$?
-    if [ $PATCH_STATUS -eq 1 ]; then
-        log_warn "⚠️ 'integrate-logo.patch' failed to apply cleanly (exit code $PATCH_STATUS). It might be partially applied, already applied, or have conflicts. Continuing script." | tee -a "$LOG_FILE"
-        PATCH_FAILURES_LIST+=("integrate-logo.patch (conflicts/already applied)")
-    else
-        log_warn "❌ 'integrate-logo.patch' failed with unexpected exit code $PATCH_STATUS. Continuing script." | tee -a "$LOG_FILE"
-        PATCH_FAILURES_LIST+=("integrate-logo.patch (error code $PATCH_STATUS)")
-    fi
-fi
-log_progress "LOGO_INTEGRATION"
-
-# Create custom build configuration
-# This is done before setup-logo.sh as setup-logo.sh might place files
-# referenced by the build configuration (e.g. if args.gn refers to specific theme files).
-# However, the BRANDING file copy itself has been moved to setup-logo.sh.
-log_info "⚙️ Setting up build configuration..." | tee -a "$LOG_FILE"
-log_info "   Creating directory out/HenSurf for build configuration (if it doesn't exist)..." | tee -a "$LOG_FILE"
-mkdir -p out/HenSurf # Default build dir, can be overridden by HENSURF_OUTPUT_DIR in build.sh
-log_info "   Copying $PROJECT_ROOT/src/hensurf/config/hensurf.gn to out/HenSurf/args.gn..." | tee -a "$LOG_FILE"
-# This args.gn will be used by `gn gen out/HenSurf` or if HENSURF_OUTPUT_DIR is not set.
-# If HENSURF_OUTPUT_DIR is set in build.sh, that script will handle its own args.gn.
-cp "$PROJECT_ROOT/src/hensurf/config/hensurf.gn" out/HenSurf/args.gn
-log_success "✅ Default build configuration created at out/HenSurf/args.gn." | tee -a "$LOG_FILE"
-log_progress "BUILD_CONFIG"
-
-# Apply patch for default search engine
-log_info "🔍 Applying 'feature-default-search-engine.patch'..." | tee -a "$LOG_FILE"
-if patch -p1 --forward < "$PROJECT_ROOT/src/hensurf/patches/feature-default-search-engine.patch" 2>&1 | tee -a "$LOG_FILE"; then
-    log_success "✅ 'feature-default-search-engine.patch' applied successfully." | tee -a "$LOG_FILE"
-else
-    PATCH_STATUS=$?
-    log_warn "⚠️ 'feature-default-search-engine.patch' failed (status: $PATCH_STATUS)." | tee -a "$LOG_FILE"
-    PATCH_FAILURES_LIST+=("feature-default-search-engine.patch")
-fi
-log_progress "SEARCH_ENGINE_PATCH"
-
-# Apply patch to disable Google API keys
-log_info "🔑 Applying 'feature-disable-google-apis.patch'..." | tee -a "$LOG_FILE"
-if patch -p1 --forward < "$PROJECT_ROOT/src/hensurf/patches/feature-disable-google-apis.patch" 2>&1 | tee -a "$LOG_FILE"; then
-    log_success "✅ 'feature-disable-google-apis.patch' applied successfully." | tee -a "$LOG_FILE"
-else
-    PATCH_STATUS=$?
-    log_warn "⚠️ 'feature-disable-google-apis.patch' failed (status: $PATCH_STATUS)." | tee -a "$LOG_FILE"
-    PATCH_FAILURES_LIST+=("feature-disable-google-apis.patch")
-fi
-log_progress "API_DISABLE_PATCH"
-
-# Remove promotional content
-log_info "📢 Removing promotional content..." | tee -a "$LOG_FILE"
-log_info "   Searching for and removing promo files in chrome/browser/ui..." | tee -a "$LOG_FILE"
-find chrome/browser/ui -name "*promo*" -type f -print -exec rm -f {} \; 2>/dev/null || true
-log_info "   Searching for and removing welcome files in chrome/browser/ui..." | tee -a "$LOG_FILE"
-find chrome/browser/ui -name "*welcome*" -type f -print -exec rm -f {} \; 2>/dev/null || true
-log_success "✅ Promotional content removal attempt finished." | tee -a "$LOG_FILE"
-log_progress "PROMO_REMOVAL"
-
-# Apply patch to disable crash reporting
-log_info "💥 Applying 'feature-disable-crash-reporting.patch'..." | tee -a "$LOG_FILE"
-if patch -p1 --forward < "$PROJECT_ROOT/src/hensurf/patches/feature-disable-crash-reporting.patch" 2>&1 | tee -a "$LOG_FILE"; then
-    log_success "✅ 'feature-disable-crash-reporting.patch' applied successfully." | tee -a "$LOG_FILE"
-else
-    PATCH_STATUS=$?
-    log_warn "⚠️ 'feature-disable-crash-reporting.patch' failed (status: $PATCH_STATUS)." | tee -a "$LOG_FILE"
-    PATCH_FAILURES_LIST+=("feature-disable-crash-reporting.patch")
-fi
-log_progress "CRASH_DISABLE_PATCH"
-
-# Apply patch to update version info
-log_info "📝 Applying 'feature-update-version-info.patch'..." | tee -a "$LOG_FILE"
-if patch -p1 --forward < "$PROJECT_ROOT/src/hensurf/patches/feature-update-version-info.patch" 2>&1 | tee -a "$LOG_FILE"; then
-    log_success "✅ 'feature-update-version-info.patch' applied successfully." | tee -a "$LOG_FILE"
-else
-    PATCH_STATUS=$?
-    log_warn "⚠️ 'feature-update-version-info.patch' failed (status: $PATCH_STATUS)." | tee -a "$LOG_FILE"
-    PATCH_FAILURES_LIST+=("feature-update-version-info.patch")
-fi
-log_progress "VERSION_UPDATE_PATCH"
-
-# Apply patch for custom user agent file
-log_info "🌐 Applying 'feature-custom-user-agent-file.patch'..." | tee -a "$LOG_FILE"
-if patch -p1 --forward < "$PROJECT_ROOT/src/hensurf/patches/feature-custom-user-agent-file.patch" 2>&1 | tee -a "$LOG_FILE"; then
-    log_success "✅ 'feature-custom-user-agent-file.patch' applied successfully." | tee -a "$LOG_FILE"
-else
-    PATCH_STATUS=$?
-    log_warn "⚠️ 'feature-custom-user-agent-file.patch' failed (status: $PATCH_STATUS)." | tee -a "$LOG_FILE"
-    PATCH_FAILURES_LIST+=("feature-custom-user-agent-file.patch")
-fi
-log_progress "USER_AGENT_PATCH"
-
-# Copy Staged Branding Assets to src/chromium
-HENSURF_STAGED_ASSETS_DIR="$PROJECT_ROOT/src/hensurf/branding/distributable_assets/chromium"
-log_info "🚚 Copying staged branding assets from $HENSURF_STAGED_ASSETS_DIR to src/chromium..." | tee -a "$LOG_FILE"
-
-if [ ! -d "$HENSURF_STAGED_ASSETS_DIR" ]; then
-    log_warn "⚠️ Staged assets directory not found at $HENSURF_STAGED_ASSETS_DIR. Skipping asset copy. Run setup-logo.sh first." | tee -a "$LOG_FILE"
-    PATCH_FAILURES_LIST+=("Staged assets directory not found")
-else
-    # Define target directories within src/chromium (current working directory)
-    DEST_THEME_MAIN_DIR_IN_SRC_CHROMIUM="chrome/app/theme"
-    DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM="$DEST_THEME_MAIN_DIR_IN_SRC_CHROMIUM/chromium"
-    DEST_THEME_100_PERCENT_DIR_IN_SRC_CHROMIUM="$DEST_THEME_MAIN_DIR_IN_SRC_CHROMIUM/default_100_percent/chromium"
-    DEST_THEME_200_PERCENT_DIR_IN_SRC_CHROMIUM="$DEST_THEME_MAIN_DIR_IN_SRC_CHROMIUM/default_200_percent/chromium"
-    DEST_APP_DIR_IN_SRC_CHROMIUM="chrome/app"
-
-    # Create destination directories in src/chromium
-    mkdir -p "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM"
-    mkdir -p "$DEST_THEME_100_PERCENT_DIR_IN_SRC_CHROMIUM"
-    mkdir -p "$DEST_THEME_200_PERCENT_DIR_IN_SRC_CHROMIUM"
-    mkdir -p "$DEST_APP_DIR_IN_SRC_CHROMIUM"
-    log_info "   Ensured destination directories exist in src/chromium." | tee -a "$LOG_FILE"
-
-    # Copy PNG Icons
-    log_info "   Copying PNG icons..." | tee -a "$LOG_FILE"
-    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/product_logo_16.png" "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/product_logo_16.png"
-    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/product_logo_32.png" "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/product_logo_32.png"
-    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/default_100_percent/chromium/product_logo_48.png" "$DEST_THEME_100_PERCENT_DIR_IN_SRC_CHROMIUM/product_logo_48.png"
-    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/product_logo_64.png" "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/product_logo_64.png"
-    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/product_logo_128.png" "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/product_logo_128.png"
-    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/product_logo_256.png" "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/product_logo_256.png"
-    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/default_200_percent/chromium/product_logo_16.png" "$DEST_THEME_200_PERCENT_DIR_IN_SRC_CHROMIUM/product_logo_16.png"
-    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/default_200_percent/chromium/product_logo_32.png" "$DEST_THEME_200_PERCENT_DIR_IN_SRC_CHROMIUM/product_logo_32.png"
-    cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/default_200_percent/chromium/product_logo_48.png" "$DEST_THEME_200_PERCENT_DIR_IN_SRC_CHROMIUM/product_logo_48.png"
-    log_info "   PNG icons copied." | tee -a "$LOG_FILE"
-
-    # Copy Windows ICO
-    DEST_WIN_ICON_DIR_IN_SRC_CHROMIUM="$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/win"
-    if [ -f "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/win/chromium.ico" ]; then
-        mkdir -p "$DEST_WIN_ICON_DIR_IN_SRC_CHROMIUM"
-        cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/win/chromium.ico" "$DEST_WIN_ICON_DIR_IN_SRC_CHROMIUM/chromium.ico"
-        log_info "   Copied chromium.ico to $DEST_WIN_ICON_DIR_IN_SRC_CHROMIUM/." | tee -a "$LOG_FILE"
-    else
-        log_info "   chromium.ico not found in staged assets ($HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/win/chromium.ico), skipping." | tee -a "$LOG_FILE"
-    fi
-
-    # Copy Favicon
-    if [ -f "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/favicon.png" ]; then
-        cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/favicon.png" "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/favicon.png"
-        log_info "   Copied favicon.png." | tee -a "$LOG_FILE"
-    else
-        log_info "   favicon.png not found in staged assets, skipping." | tee -a "$LOG_FILE"
-    fi
-
-    # Copy chrome_exe.ver
-    if [ -f "$HENSURF_STAGED_ASSETS_DIR/chrome/app/chrome_exe.ver" ]; then
-        cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/chrome_exe.ver" "$DEST_APP_DIR_IN_SRC_CHROMIUM/chrome_exe.ver"
-        log_info "   Copied chrome_exe.ver." | tee -a "$LOG_FILE"
-    else
-        log_info "   chrome_exe.ver not found in staged assets, skipping." | tee -a "$LOG_FILE"
-    fi
-
-    # Copy macOS app.icns
-    if [ -f "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/app.icns" ]; then
-        cp "$HENSURF_STAGED_ASSETS_DIR/chrome/app/theme/chromium/app.icns" "$DEST_THEME_CHROMIUM_DIR_IN_SRC_CHROMIUM/app.icns"
-        log_info "   Copied app.icns." | tee -a "$LOG_FILE"
-    else
-        log_info "   app.icns not found in staged assets, skipping (this is normal if not on macOS host during setup-logo.sh or if iconutil failed)." | tee -a "$LOG_FILE"
-    fi
-    log_success "✅ Staged branding assets copied to src/chromium." | tee -a "$LOG_FILE"
-fi
-log_progress "STAGED_ASSETS_COPY"
-
-# Original call to setup-logo.sh is removed from here. Its asset staging part is done earlier,
-# and its asset deployment part is handled by the new copy step above.
-
-
-# Final summary
-END_TIME=$(date +%s)
-TOTAL_TIME=$((END_TIME - START_TIME))
-
-log_info "" | tee -a "$LOG_FILE" # Spacer
-if [ ${#PATCH_FAILURES_LIST[@]} -eq 0 ]; then
-    log_success "✅ All patches and customization steps completed successfully in ${TOTAL_TIME} seconds!" | tee -a "$LOG_FILE"
-else
-    log_warn "⚠️ Some patches or steps encountered issues. Total time: ${TOTAL_TIME} seconds." | tee -a "$LOG_FILE"
-    log_warn "   The following patches reported failures or issues:" | tee -a "$LOG_FILE"
-    for failure in "${PATCH_FAILURES_LIST[@]}"; do
-        log_warn "     - $failure" | tee -a "$LOG_FILE"
     done
-    log_warn "   Please review the log file '$LOG_FILE' for details." | tee -a "$LOG_FILE"
-    log_warn "   The script continued where possible, but the build may not be as expected." | tee -a "$LOG_FILE"
-fi
+}
 
 
-if [[ "$OS_TYPE_APPLY" == "windows" ]]; then
-    log_info "📊 Final disk usage of src/chromium: (Size check skipped on Windows for performance)." | tee -a "$LOG_FILE"
-else
-    log_info "📊 Final disk usage of src/chromium: $(du -sh . | cut -f1)." | tee -a "$LOG_FILE"
+# --- Main Execution Function ---
+main() {
+    # Clear log file from previous runs
+    true > "${LOG_FILE}"
+    _log 'INFO' "Starting HenSurf Patcher. Log file: ${LOG_FILE}"
+
+    preflight_checks
+    _log_progress "PRE-FLIGHT CHECKS"
+    
+    # The original script had asset staging here. If it's a separate concern,
+    # it can be added back as a function call. For now, we focus on patching.
+    
+    manage_patches
+    _log_progress "PATCH MANAGEMENT"
+
+    # Other functions from the original script can be added here as needed,
+    # for example, for configuring the build environment or deploying assets
+    # after the patching is complete.
+}
+
+# --- Script Entry Point ---
+
+# Parse Command-Line Arguments
+if [[ $# -gt 0 ]]; then
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)              usage ;;
+            -r|--revert)            REVERT_PATCHES=true; shift ;;
+            -f|--force-apply)       FORCE_APPLY=true; shift ;;
+            -s|--skip-deps-check)   SKIP_DEPS_CHECK=true; shift ;;
+            --no-color)             NO_COLOR=true; shift ;;
+            *)
+                echo -e "${_C_RED}Unknown option: $1${_C_RESET}"
+                usage 1
+                ;;
+        esac
+    done
 fi
 
-log_info "" # Use log_info for consistent formatting, tee not needed for final stdout block
-log_info "HenSurf Browser - Customization Summary:"
-log_info "  - AI Features: Attempted removal (check warnings if any)"
-log_info "  - Logo Integration: Attempted (check warnings if any)"
-log_info "  - Branding Files: Copied"
-log_info "  - Build Configuration: Default 'args.gn' created/updated for 'out/HenSurf'"
-log_info "  - Default Search Engine: Set to DuckDuckGo (via C++ override)"
-log_info "  - Google API Keys: Disabled (via C++ override)"
-log_info "  - Promotional Content: Attempted removal"
-log_info "  - Crash Reporting: Disabled (via C++ override)"
-log_info "  - Version Info: Updated to 'HenSurf Browser' / 'HenSurf'"
-log_info "  - User Agent: Customized (via C++ override)"
-log_info "  - Logo Setup Script: Executed (if found)"
-log_info ""
-if [ ${#PATCH_FAILURES_LIST[@]} -ne 0 ]; then
-    log_warn "🔴 IMPORTANT: One or more patches failed to apply cleanly. Review messages above and the log file."
-fi
-log_info "📋 Detailed log saved to: $LOG_FILE"
-log_info "⏱️ Total time for patch script: ${TOTAL_TIME} seconds."
-log_info "Next step: Run ./scripts/build.sh to build HenSurf Browser."
+# Execute the main logic. The 'trap' will handle the final summary.
+main

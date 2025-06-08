@@ -1,6 +1,0 @@
-[2025-06-08 14:02:23] [INFO] 🔨 Building HenSurf Browser for linux (x64)...
-[2025-06-08 14:02:23] [INFO]    Output directory (relative to /app/src/chromium e.g., src/chromium/out/HenSurf-linux-x64): out/HenSurf-linux-x64
-[2025-06-08 14:02:23] [INFO]    Build log: /app/src/chromium/out/HenSurf-linux-x64/build.log
-[2025-06-08 14:02:23] [SUCCESS] ✅ Chromium source directory found: /app/src/chromium
-[2025-06-08 14:02:23] [SUCCESS] ✅ HenSurf base configuration (src/hensurf/config/hensurf.gn) found.
-[2025-06-08 14:02:23] [ERROR] Failed to add depot_tools to PATH. Exiting.

@@ -95,7 +95,7 @@ jobs:
       run: |
         set -e
         echo "Configuring gclient..."
-        gclient config --spec 'solutions = [{"name": "src", "url": "https://chromium.googlesource.com/chromium/src.git", "managed": False}]'
+        gclient config --spec 'solutions = [{"name": "src", "url": "https://chromium.googlesource.com/chromium/src.git"}]'
 
         echo "Running gclient sync -D -j1..."
         gclient sync -D -j1

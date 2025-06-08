@@ -33,8 +33,8 @@ jobs:
         echo "Initial disk space:"
         df -h
         sudo rm -rf /usr/share/dotnet /opt/ghc "/usr/local/share/boost" "$AGENT_TOOLSDIRECTORY" /usr/local/lib/android /opt/hostedtoolcache/CodeQL
-        sudo swapoff /swapfile
-        sudo rm -f /swapfile
+        sudo swapoff /swapfile || true
+        sudo rm -f /swapfile || true
         sudo apt-get clean
         echo "Disk space after cleanup:"
         df -h

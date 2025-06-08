@@ -86,15 +86,16 @@ fi
 log_progress "AI_REMOVAL"
 
 # Apply bloatware removal patch
-log_with_time "🗑️ Starting bloatware removal..."
-log_with_time "[PATCH] Reading patch: ../../patches/remove-bloatware.patch" # Replaced log_file_op
-if patch -p1 < ../../patches/remove-bloatware.patch 2>&1 | tee -a "$LOG_FILE"; then
-    log_with_time "✅ Bloatware removal patch applied successfully"
-else
-    log_with_time "❌ Failed to apply bloatware removal patch"
-    exit 1
-fi
-log_progress "BLOATWARE_REMOVAL"
+# log_with_time "🗑️ Starting bloatware removal..."
+# log_with_time "[PATCH] Reading patch: ../../patches/remove-bloatware.patch" # Replaced log_file_op
+# if patch -p1 < ../../patches/remove-bloatware.patch 2>&1 | tee -a "$LOG_FILE"; then
+#     log_with_time "✅ Bloatware removal patch applied successfully"
+# else
+#     log_with_time "❌ Failed to apply bloatware removal patch"
+#     exit 1
+# fi
+# log_progress "BLOATWARE_REMOVAL"
+log_with_time "ℹ️ Bloatware removal via patch is currently disabled. Feature is controlled by HENSURF_ENABLE_BLOATWARE GN arg."
 
 # Apply logo integration patch
 log_with_time "🎨 Starting logo integration..."

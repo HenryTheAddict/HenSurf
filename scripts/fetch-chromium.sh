@@ -104,42 +104,69 @@ if [ "$AVAILABLE_SPACE_GB" -lt "$MIN_DISK_SPACE_GB" ]; then
     fi
 fi
 
-# Define HenSurf root and Chromium directory path (relative to HenSurf root)
+# Define HenSurf root and the parent directory for the Chromium checkout
 HENSURF_ROOT_DIR="$PROJECT_ROOT"
-CHROMIUM_DIR="$HENSURF_ROOT_DIR/chromium"
+# Chromium source will be checked out into $PROJECT_ROOT/src/chromium
+# depot_tools 'fetch' command creates a directory named 'src' by default.
+# So we'll cd into $PROJECT_ROOT/src, run fetch (which creates $PROJECT_ROOT/src/src),
+# then rename $PROJECT_ROOT/src/src to $PROJECT_ROOT/src/chromium.
+CHROMIUM_PARENT_DIR="$HENSURF_ROOT_DIR/src"
+TARGET_CHROMIUM_DIR_NAME="chromium" # The final directory name for chromium source
+FETCH_CREATED_DIR_NAME="src"      # Name of directory 'fetch chromium' creates
 
-if [ ! -d "$CHROMIUM_DIR" ]; then
-    log_info "📁 Creating chromium directory at $CHROMIUM_DIR..."
-    mkdir -p "$CHROMIUM_DIR"
+if [ ! -d "$CHROMIUM_PARENT_DIR" ]; then
+    log_info "📁 Creating parent directory for Chromium checkout at $CHROMIUM_PARENT_DIR..."
+    mkdir -p "$CHROMIUM_PARENT_DIR"
 fi
 
-safe_cd "$CHROMIUM_DIR" # log_info for success is part of safe_cd
+safe_cd "$CHROMIUM_PARENT_DIR" # log_info for success is part of safe_cd
 
-# Check if .gclient exists (indicates previous fetch)
-if [ -f ".gclient" ]; then
-    log_info "🔄 Updating existing Chromium source via 'gclient sync'..."
+# Check if the target chromium directory (e.g., src/chromium) or its .gclient already exists
+# This indicates a previous fetch.
+if [ -f "$TARGET_CHROMIUM_DIR_NAME/.gclient" ] || [ -d "$TARGET_CHROMIUM_DIR_NAME/src" ]; then # 'src' here refers to chromium's internal src, not our top level 'src'
+    log_info "Chromium checkout already detected at $TARGET_CHROMIUM_DIR_NAME."
+    safe_cd "$TARGET_CHROMIUM_DIR_NAME"
+    log_info "🔄 Updating existing Chromium source via 'gclient sync' in $(pwd)..."
     gclient sync
+    # cd back to parent for consistency before enhanced sync prompt
+    safe_cd "$CHROMIUM_PARENT_DIR"
 else
-    log_info "📦 Fetching new Chromium source via 'fetch --nohooks chromium' (this will take a while)..."
+    log_info "📦 Fetching new Chromium source via 'fetch --nohooks chromium' into $(pwd)..."
+    log_info "   This will create a directory named '$FETCH_CREATED_DIR_NAME' here."
     log_info "⏳ Expected time: 30-60 minutes or more depending on internet speed and machine specs."
     
-    fetch --nohooks chromium # Creates 'src' directory and .gclient file
+    fetch --nohooks chromium # Creates './src' (e.g. $PROJECT_ROOT/src/src)
     
-    log_info "🔧 Running gclient hooks..."
-    if [ ! -f ".gclient" ]; then
-        log_error "❌ .gclient file not found in $(pwd) after fetch. This is unexpected."
+    # Rename the fetched 'src' directory to 'chromium'
+    if [ -d "$FETCH_CREATED_DIR_NAME" ]; then
+        log_info "Renaming fetched directory '$FETCH_CREATED_DIR_NAME' to '$TARGET_CHROMIUM_DIR_NAME'..."
+        mv "$FETCH_CREATED_DIR_NAME" "$TARGET_CHROMIUM_DIR_NAME"
+        log_success "✅ Renamed to $TARGET_CHROMIUM_DIR_NAME."
+    else
+        log_error "❌ Directory '$FETCH_CREATED_DIR_NAME' not found after fetch. Cannot rename."
+        exit 1
+    fi
+
+    safe_cd "$TARGET_CHROMIUM_DIR_NAME" # cd into src/chromium
+
+    log_info "🔧 Running gclient hooks in $(pwd)..."
+    if [ ! -f ".gclient" ]; then # .gclient should be in src/chromium now
+        log_error "❌ .gclient file not found in $(pwd) after fetch and rename. This is unexpected."
         log_error "   Ensure 'fetch --nohooks chromium' completed successfully."
         exit 1
     fi
-    if [ ! -d "src" ]; then # 'fetch chromium' creates src/, so this should exist
-        log_error "❌ 'src' directory not found in $(pwd) after fetch. This is unexpected."
-        exit 1
-    fi
+    # Chromium's own 'src' directory is one level deeper now, e.g. src/chromium/src - this check is not needed here.
+    # if [ ! -d "src" ]; then
+    #     log_error "❌ 'src' directory not found in $(pwd) after fetch. This is unexpected."
+    #     exit 1
+    # fi
     gclient runhooks
+    # cd back to parent for consistency before enhanced sync prompt
+    safe_cd "$CHROMIUM_PARENT_DIR"
 fi
 
 log_info "✅ Chromium source code sync/fetch operation completed."
-log_info "   Source code is in: $(pwd)/src"
+log_info "   Source code is in: $CHROMIUM_PARENT_DIR/$TARGET_CHROMIUM_DIR_NAME"
 log_info ""
 read -r -p "Do you want to perform an enhanced sync with all branch heads and tags? (Useful for checking out specific versions or full history, but takes more time/space) (y/N): " ENHANCED_SYNC_REPLY
 echo
@@ -157,7 +184,7 @@ fi
 
 
 log_info ""
-log_success "✅ Chromium source code is ready in $(pwd)/src!"
+log_success "✅ Chromium source code is ready in $CHROMIUM_PARENT_DIR/$TARGET_CHROMIUM_DIR_NAME!"
 log_info ""
 log_info "Next steps:"
 log_info "1. Run $HENSURF_ROOT_DIR/scripts/apply-patches.sh to apply HenSurf customizations"

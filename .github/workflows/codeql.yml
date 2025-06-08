@@ -79,10 +79,16 @@ jobs:
         gclient runhooks -j8
 
     - name: Apply HenSurf patches
-      working-directory: ${{ github.workspace }}/chromium/src
+      working-directory: ${{ github.workspace }}/chromium/src # Patches apply to the synced Chromium source
       run: |
         # Ensure the HenSurf scripts are executable
         chmod +x ${{ github.workspace }}/hensurf/scripts/apply-patches.sh
+        # Override CHROMIUM_SRC_DIR for apply-patches.sh to point to the CI's chromium checkout.
+        # apply-patches.sh itself is in ${{ github.workspace }}/hensurf/scripts/
+        # It reads patches from ${{ github.workspace }}/hensurf/src/hensurf/patches/
+        # And it needs to apply them to ${{ github.workspace }}/chromium/src/
+        echo "Overriding CHROMIUM_SRC_DIR for apply-patches.sh to: ${{ github.workspace }}/chromium/src"
+        CHROMIUM_SRC_DIR="${{ github.workspace }}/chromium/src" \
         bash ${{ github.workspace }}/hensurf/scripts/apply-patches.sh --no-fetch
 
     - name: Initialize CodeQL

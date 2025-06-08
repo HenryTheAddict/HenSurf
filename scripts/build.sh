@@ -12,7 +12,7 @@ source "$SCRIPT_DIR_BUILD/utils.sh"
 
 # Define Project Root
 PROJECT_ROOT=$(cd "$SCRIPT_DIR_BUILD/.." &>/dev/null && pwd)
-CHROMIUM_SRC_DIR="$PROJECT_ROOT/chromium/src"
+CHROMIUM_SRC_DIR="$PROJECT_ROOT/src/chromium"
 
 # --- Global Variables ---
 # These variables are used throughout the script. Many are set by `setup_environment_variables` or `check_system_requirements`.
@@ -133,7 +133,7 @@ setup_environment_variables() {
     true >"$BUILD_LOG_FILE"
 
     log_info "🔨 Building HenSurf Browser for $FINAL_TARGET_OS ($FINAL_TARGET_CPU)..." | tee -a "$BUILD_LOG_FILE"
-    log_info "   Output directory (relative to $CHROMIUM_SRC_DIR): $FINAL_OUTPUT_DIR" | tee -a "$BUILD_LOG_FILE"
+    log_info "   Output directory (relative to $CHROMIUM_SRC_DIR e.g., src/chromium/out/HenSurf-linux-x64): $FINAL_OUTPUT_DIR" | tee -a "$BUILD_LOG_FILE"
     log_info "   Build log: $BUILD_LOG_FILE" | tee -a "$BUILD_LOG_FILE"
 }
 
@@ -414,11 +414,11 @@ main() {
     log_success "✅ Chromium source directory found: $CHROMIUM_SRC_DIR" | tee -a "$BUILD_LOG_FILE"
 
     # Check if essential HenSurf config exists
-    if [ ! -f "$PROJECT_ROOT/config/hensurf.gn" ]; then
-        log_error "❌ HenSurf base configuration (config/hensurf.gn) not found. Please run ./scripts/apply-patches.sh or ensure config is in place." | tee -a "$BUILD_LOG_FILE"
+    if [ ! -f "$PROJECT_ROOT/src/hensurf/config/hensurf.gn" ]; then
+        log_error "❌ HenSurf base configuration (src/hensurf/config/hensurf.gn) not found. Please run ./scripts/apply-patches.sh or ensure config is in place." | tee -a "$BUILD_LOG_FILE"
         exit 1
     fi
-    log_success "✅ HenSurf base configuration (config/hensurf.gn) found." | tee -a "$BUILD_LOG_FILE"
+    log_success "✅ HenSurf base configuration (src/hensurf/config/hensurf.gn) found." | tee -a "$BUILD_LOG_FILE"
 
     # Depot Tools Setup
     local DEPOT_TOOLS_DIR
@@ -599,7 +599,7 @@ summarize_build_artifacts() {
     [[ "$FINAL_TARGET_OS" == "win" ]] && EXE_SUFFIX=".exe"
 
     log_success "🎉 HenSurf build for $FINAL_TARGET_OS-$FINAL_TARGET_CPU completed successfully!" | tee -a "$BUILD_LOG_FILE"
-    log_info "📍 Build artifacts location (relative to $CHROMIUM_SRC_DIR):" | tee -a "$BUILD_LOG_FILE"
+    log_info "📍 Build artifacts location (relative to $CHROMIUM_SRC_DIR e.g., src/chromium/out/HenSurf-linux-x64):" | tee -a "$BUILD_LOG_FILE"
     log_info "   Main executable: $FINAL_OUTPUT_DIR/chrome${EXE_SUFFIX}" | tee -a "$BUILD_LOG_FILE"
 
     if [ "$BUILD_CHROMEDRIVER" = true ] && [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/chromedriver${EXE_SUFFIX}" ]; then
@@ -613,7 +613,7 @@ summarize_build_artifacts() {
         if [ "$BUILD_MINI_INSTALLER" = true ]; then
             if [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.dmg" ]; then
                  log_info "   macOS Installer:  $FINAL_OUTPUT_DIR/HenSurf.dmg" | tee -a "$BUILD_LOG_FILE"
-            elif [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/mini_installer.dmg" ]; then
+            elif [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/mini_installer.dmg" ]; then # Note: This path is already correct as it uses CHROMIUM_SRC_DIR
                  log_info "   macOS Installer:  $FINAL_OUTPUT_DIR/mini_installer.dmg" | tee -a "$BUILD_LOG_FILE"
             else
                  log_info "   (macOS installer not found at expected paths)" | tee -a "$BUILD_LOG_FILE"
@@ -632,7 +632,7 @@ summarize_build_artifacts() {
     fi
     log_info "   Build log: $BUILD_LOG_FILE" | tee -a "$BUILD_LOG_FILE"
     log_info "" | tee -a "$BUILD_LOG_FILE"
-    log_info "🚀 To run HenSurf (from $CHROMIUM_SRC_DIR directory):" | tee -a "$BUILD_LOG_FILE"
+    log_info "🚀 To run HenSurf (from $CHROMIUM_SRC_DIR e.g. src/chromium directory):" | tee -a "$BUILD_LOG_FILE"
 
     if [[ "$FINAL_TARGET_OS" == "mac" ]]; then
         if [ -d "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.app" ]; then

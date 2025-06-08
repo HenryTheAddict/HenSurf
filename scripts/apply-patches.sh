@@ -66,18 +66,18 @@ if [[ "$OS_TYPE_APPLY" == "windows" ]]; then
     else
         log_warn "Available disk space: ('wmic' not found, cannot check on Windows)" | tee -a "$LOG_FILE"
     fi
-    if [ -d "chromium/src" ]; then
-        log_info "📁 Chromium source directory found at chromium/src. (Size check skipped on Windows for performance)" | tee -a "$LOG_FILE"
+    if [ -d "$PROJECT_ROOT/src/chromium" ]; then
+        log_info "📁 Chromium source directory found at src/chromium. (Size check skipped on Windows for performance)" | tee -a "$LOG_FILE"
     fi
 else # Linux/macOS
     log_info "Available disk space: $(df -h . | tail -1 | awk '{print $4}')" | tee -a "$LOG_FILE"
-    if [ -d "chromium/src" ]; then
-        log_info "📁 Chromium source found, size: $(du -sh chromium/src | cut -f1)" | tee -a "$LOG_FILE"
+    if [ -d "$PROJECT_ROOT/src/chromium" ]; then
+        log_info "📁 Chromium source found, size: $(du -sh $PROJECT_ROOT/src/chromium | cut -f1)" | tee -a "$LOG_FILE"
     fi
 fi
 
 # Check if Chromium source exists
-CHROMIUM_SRC_DIR="$PROJECT_ROOT/chromium/src"
+CHROMIUM_SRC_DIR="$PROJECT_ROOT/src/chromium"
 if [ ! -d "$CHROMIUM_SRC_DIR" ]; then
     log_error "❌ Chromium source not found at $CHROMIUM_SRC_DIR. Please run ./scripts/fetch-chromium.sh first." | tee -a "$LOG_FILE"
     exit 1
@@ -91,7 +91,7 @@ log_info "📋 Starting patch application..." | tee -a "$LOG_FILE"
 # Apply main AI removal patch
 log_info "🤖 Applying 'remove-ai-features.patch'..." | tee -a "$LOG_FILE"
 # Attempt to apply the patch.
-if patch -p1 --forward < "$PROJECT_ROOT/patches/remove-ai-features.patch" 2>&1 | tee -a "$LOG_FILE"; then
+if patch -p1 --forward < "$PROJECT_ROOT/src/hensurf/patches/remove-ai-features.patch" 2>&1 | tee -a "$LOG_FILE"; then
     log_success "✅ 'remove-ai-features.patch' applied successfully." | tee -a "$LOG_FILE"
 else
     # Store exit code of the patch command
@@ -113,7 +113,7 @@ log_info "ℹ️ Bloatware removal via patch is currently disabled. Feature is c
 
 # Apply logo integration patch
 log_info "🎨 Applying 'integrate-logo.patch'..." | tee -a "$LOG_FILE"
-if patch -p1 --forward < "$PROJECT_ROOT/patches/integrate-logo.patch" 2>&1 | tee -a "$LOG_FILE"; then
+if patch -p1 --forward < "$PROJECT_ROOT/src/hensurf/patches/integrate-logo.patch" 2>&1 | tee -a "$LOG_FILE"; then
     log_success "✅ 'integrate-logo.patch' applied successfully." | tee -a "$LOG_FILE"
 else
     PATCH_STATUS=$?
@@ -134,10 +134,10 @@ log_progress "LOGO_INTEGRATION"
 log_info "⚙️ Setting up build configuration..." | tee -a "$LOG_FILE"
 log_info "   Creating directory out/HenSurf for build configuration (if it doesn't exist)..." | tee -a "$LOG_FILE"
 mkdir -p out/HenSurf # Default build dir, can be overridden by HENSURF_OUTPUT_DIR in build.sh
-log_info "   Copying $PROJECT_ROOT/config/hensurf.gn to out/HenSurf/args.gn..." | tee -a "$LOG_FILE"
+log_info "   Copying $PROJECT_ROOT/src/hensurf/config/hensurf.gn to out/HenSurf/args.gn..." | tee -a "$LOG_FILE"
 # This args.gn will be used by `gn gen out/HenSurf` or if HENSURF_OUTPUT_DIR is not set.
 # If HENSURF_OUTPUT_DIR is set in build.sh, that script will handle its own args.gn.
-cp "$PROJECT_ROOT/config/hensurf.gn" out/HenSurf/args.gn
+cp "$PROJECT_ROOT/src/hensurf/config/hensurf.gn" out/HenSurf/args.gn
 log_success "✅ Default build configuration created at out/HenSurf/args.gn." | tee -a "$LOG_FILE"
 log_progress "BUILD_CONFIG"
 
@@ -260,9 +260,9 @@ SETUP_LOGO_SCRIPT="$PROJECT_ROOT/scripts/setup-logo.sh"
 if [ -f "$SETUP_LOGO_SCRIPT" ]; then
     # Ensure it's executable
     chmod +x "$SETUP_LOGO_SCRIPT"
-    # Execute setup-logo.sh. It cds into chromium/src itself.
-    # We are already in chromium/src, but setup-logo.sh is written to be callable from project root too.
-    # To ensure it behaves as expected when called from apply-patches.sh (already in src),
+    # Execute setup-logo.sh. It cds into src/chromium itself.
+    # We are already in src/chromium, but setup-logo.sh is written to be callable from project root too.
+    # To ensure it behaves as expected when called from apply-patches.sh (already in src/chromium),
     # it's fine to call it directly. It uses PROJECT_ROOT for paths to branding assets.
     if "$SETUP_LOGO_SCRIPT" 2>&1 | tee -a "$LOG_FILE"; then
         log_success "✅ 'scripts/setup-logo.sh' executed successfully." | tee -a "$LOG_FILE"
@@ -300,9 +300,9 @@ fi
 
 
 if [[ "$OS_TYPE_APPLY" == "windows" ]]; then
-    log_info "📊 Final disk usage of chromium/src: (Size check skipped on Windows for performance)." | tee -a "$LOG_FILE"
+    log_info "📊 Final disk usage of src/chromium: (Size check skipped on Windows for performance)." | tee -a "$LOG_FILE"
 else
-    log_info "📊 Final disk usage of chromium/src: $(du -sh . | cut -f1)." | tee -a "$LOG_FILE"
+    log_info "📊 Final disk usage of src/chromium: $(du -sh . | cut -f1)." | tee -a "$LOG_FILE"
 fi
 
 log_info "" # Use log_info for consistent formatting, tee not needed for final stdout block

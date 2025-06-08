@@ -13,10 +13,10 @@ source "$SCRIPT_DIR_SETUP_LOGO/utils.sh" # Provides log_* and safe_cd
 # Define project structure variables
 # PROJECT_ROOT is the top-level directory of the HenSurf Browser project.
 PROJECT_ROOT=$(cd "$SCRIPT_DIR_SETUP_LOGO/.." &>/dev/null && pwd)
-# CHROMIUM_SRC is the path to the 'src' directory within the Chromium checkout.
-CHROMIUM_SRC="$PROJECT_ROOT/chromium/src"
+# CHROMIUM_SRC is the path to the Chromium source directory, now at src/chromium.
+CHROMIUM_SRC="$PROJECT_ROOT/src/chromium"
 # BRANDING_DIR contains the HenSurf branding assets (icons, BRANDING file).
-BRANDING_DIR="$PROJECT_ROOT/branding"
+BRANDING_DIR="$PROJECT_ROOT/src/hensurf/branding"
 # ICONS_DIR is where processed PNG icons are stored.
 ICONS_DIR="$BRANDING_DIR/icons"
 
@@ -45,30 +45,35 @@ log_success "✅ Icons directory found: $ICONS_DIR"
 safe_cd "$CHROMIUM_SRC"
 log_info "Working inside Chromium source directory: $(pwd)"
 
-# Define target theme directories within chromium/src
+# Define target theme directories within src/chromium
 # These are standard Chromium directories for placing theme assets.
 THEME_MAIN_DIR="chrome/app/theme" # Base theme directory
 THEME_CHROMIUM_DIR="$THEME_MAIN_DIR/chromium" # For general chromium assets
-THEME_HENSURF_DIR="$THEME_MAIN_DIR/hensurf"   # HenSurf specific branding (e.g., BRANDING file)
+# THEME_HENSURF_DIR has been moved to src/hensurf/branding/theme/hensurf
+# THEME_HENSURF_DIR="$THEME_MAIN_DIR/hensurf"   # HenSurf specific branding (e.g., BRANDING file)
 THEME_100_PERCENT_DIR="$THEME_MAIN_DIR/default_100_percent/chromium" # For 100% scale assets
 THEME_200_PERCENT_DIR="$THEME_MAIN_DIR/default_200_percent/chromium" # For 200% scale assets (Retina)
 
 # Create necessary theme directories if they don't exist
 log_info "🔧 Ensuring theme directories exist..."
 mkdir -p "$THEME_CHROMIUM_DIR"
-mkdir -p "$THEME_HENSURF_DIR"
+# mkdir -p "$THEME_HENSURF_DIR" # This directory is no longer created in src/chromium/chrome/app/theme
 mkdir -p "$THEME_100_PERCENT_DIR"
 mkdir -p "$THEME_200_PERCENT_DIR"
 log_success "✅ Theme directories ensured."
 
 # Copy HenSurf BRANDING file
-log_info "🏷️ Copying HenSurf BRANDING file..."
-if [ -f "$BRANDING_DIR/BRANDING" ]; then
-    cp "$BRANDING_DIR/BRANDING" "$THEME_HENSURF_DIR/BRANDING"
-    log_success "✅ BRANDING file copied to '$THEME_HENSURF_DIR/BRANDING'."
-else
-    log_warn "⚠️ BRANDING file not found at '$BRANDING_DIR/BRANDING'. Skipping copy."
-fi
+# This section is removed as the HenSurf theme directory (including its BRANDING file)
+# has been moved to src/hensurf/branding/theme/hensurf and is assumed to be used from there.
+# If a general BRANDING file still needs to be copied to a specific chromium location,
+# this logic would need to be re-evaluated for the correct destination.
+# log_info "🏷️ Copying HenSurf BRANDING file..."
+# if [ -f "$BRANDING_DIR/BRANDING" ]; then
+#     cp "$BRANDING_DIR/BRANDING" "$THEME_HENSURF_DIR/BRANDING"
+#     log_success "✅ BRANDING file copied to '$THEME_HENSURF_DIR/BRANDING'."
+# else
+#     log_warn "⚠️ BRANDING file not found at '$BRANDING_DIR/BRANDING'. Skipping copy."
+# fi
 
 # Copy standard resolution PNG icons
 log_info "🖼️ Copying standard resolution PNG icons..."
@@ -120,7 +125,7 @@ log_success "✅ Favicon 'favicon.png' setup complete in '$THEME_CHROMIUM_DIR/'.
 
 # Update/Create chrome_exe.ver for Windows executable branding
 log_info "📝 Updating/Creating 'chrome/app/chrome_exe.ver' for Windows executable branding..."
-CHROME_EXE_VER_PATH="chrome/app/chrome_exe.ver" # Relative to $CHROMIUM_SRC
+CHROME_EXE_VER_PATH="chrome/app/chrome_exe.ver" # Relative to $CHROMIUM_SRC (which is now src/chromium)
 cat > "$CHROME_EXE_VER_PATH" << EOF
 // This file defines version strings for the Windows executable.
 // It includes chrome_version.rc.version for common fields and overrides others.
@@ -158,7 +163,7 @@ if [[ "$HOST_OS_TYPE_FOR_ICNS" == "macos" ]]; then
     log_info "🍏 Host is macOS. Attempting to create macOS app icon (app.icns)..."
 
     # Define iconset directory (temporary)
-    ICONSET_DIR_REL="chrome/app/theme/app.iconset" # Relative to $CHROMIUM_SRC
+    ICONSET_DIR_REL="chrome/app/theme/app.iconset" # Relative to $CHROMIUM_SRC (src/chromium)
     ICONSET_DIR_ABS="$CHROMIUM_SRC/$ICONSET_DIR_REL"
     # Define final app.icns path
     APP_ICNS_PATH_REL="chrome/app/theme/chromium/app.icns" # Standard location Chromium looks for

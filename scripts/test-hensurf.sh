@@ -73,7 +73,7 @@ run_test() {
 # Check if HenSurf binary exists
 # Assuming HENSURF_BINARY_PATH is relative to PROJECT_ROOT, which is SCRIPT_DIR_TEST_HENSURF/..
 PROJECT_ROOT="$(cd "$SCRIPT_DIR_TEST_HENSURF/.." && pwd)"
-HENSURF_BINARY_PATH="$PROJECT_ROOT/chromium/src/out/HenSurf/chrome"
+HENSURF_BINARY_PATH="$PROJECT_ROOT/src/chromium/out/HenSurf/chrome"
 
 if [ ! -f "$HENSURF_BINARY_PATH" ]; then
     log_error "❌ HenSurf binary not found at '$HENSURF_BINARY_PATH'. Please run ./scripts/build.sh first."

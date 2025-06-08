@@ -95,7 +95,7 @@ Building Chromium (and thus HenSurf) on Windows has specific prerequisites and r
 
 **Output Directory Structure:**
 
-Builds for different targets will now reside in separate, target-specific directories under `chromium/src/out/`. This allows you to maintain multiple builds for different operating systems or architectures simultaneously.
+Builds for different targets will now reside in separate, target-specific directories under `src/chromium/out/`. This allows you to maintain multiple builds for different operating systems or architectures simultaneously.
 
 Examples of output directory names:
 *   `HenSurf-linux-x64`
@@ -110,13 +110,13 @@ If you run `scripts/build.sh` directly without `HENSURF_` environment variables,
 After a successful build, the main executable and any installers will be located within the target-specific output directory. For example:
 
 *   **Windows:**
-    *   Executable: `chromium/src/out/HenSurf-win-x64/chrome.exe`
-    *   Installer (if built): `chromium/src/out/HenSurf-win-x64/mini_installer.exe` or `setup.exe`
+    *   Executable: `src/chromium/out/HenSurf-win-x64/chrome.exe`
+    *   Installer (if built): `src/chromium/out/HenSurf-win-x64/mini_installer.exe` or `setup.exe`
 *   **macOS:**
-    *   App Bundle: `chromium/src/out/HenSurf-mac-arm64/HenSurf.app` (for ARM64) or `chromium/src/out/HenSurf-mac-x64/HenSurf.app` (for Intel x64)
-    *   Installer (if built): `chromium/src/out/HenSurf-mac-<arch>/*.dmg`
+    *   App Bundle: `src/chromium/out/HenSurf-mac-arm64/HenSurf.app` (for ARM64) or `src/chromium/out/HenSurf-mac-x64/HenSurf.app` (for Intel x64)
+    *   Installer (if built): `src/chromium/out/HenSurf-mac-<arch>/*.dmg`
 *   **Linux:**
-    *   Executable: `chromium/src/out/HenSurf-linux-x64/chrome`
+    *   Executable: `src/chromium/out/HenSurf-linux-x64/chrome`
 
 Always replace `<os>` and `<arch>` with the specific target you built for.
 
@@ -163,10 +163,10 @@ The following steps are a general guide. Windows users, please refer to the "Bui
     *   **6. macOS (Both Intel x64 and ARM64):** Builds for both macOS architectures. It will build for your native Mac architecture first, then the other.
     *   **7. Exit:** Cancels the build.
 
-    The build process is very lengthy and resource-intensive. Output will be in a target-specific directory like `chromium/src/out/HenSurf-<os>-<arch>`.
+    The build process is very lengthy and resource-intensive. Output will be in a target-specific directory like `src/chromium/out/HenSurf-<os>-<arch>`.
 
 5.  **Alternative Build Method (`build.sh`):**
-    You can still invoke `scripts/build.sh` directly. If run without specific `HENSURF_TARGET_OS`, `HENSURF_TARGET_CPU`, or `HENSURF_OUTPUT_DIR` environment variables, it will default to building for your native OS and architecture, placing artifacts in a directory like `chromium/src/out/HenSurf-<native_os>-<native_arch>`. For more complex scenarios or CI, `build.sh` can be used with these environment variables to precisely control the build target and output location.
+    You can still invoke `scripts/build.sh` directly. If run without specific `HENSURF_TARGET_OS`, `HENSURF_TARGET_CPU`, or `HENSURF_OUTPUT_DIR` environment variables, it will default to building for your native OS and architecture, placing artifacts in a directory like `src/chromium/out/HenSurf-<native_os>-<native_arch>`. For more complex scenarios or CI, `build.sh` can be used with these environment variables to precisely control the build target and output location.
 
 ## Project Structure
 
@@ -185,12 +185,12 @@ HenSurf/
 │   └── test-hensurf.sh    # Test the built browser (Bash)
 │   └── test-hensurf.ps1   # Test the built browser (PowerShell for Windows)
 │   └── run_all_tests.py   # Python script to orchestrate tests
-├── patches/               # Source code modifications
+├── src/hensurf/patches/   # Source code modifications
 │   ├── remove-ai-features.patch
 # Note: remove-bloatware.patch is often a conceptual goal achieved via multiple patches or GN flags
 # │   ├── remove-bloatware.patch
 │   └── integrate-logo.patch
-├── branding/              # HenSurf branding assets
+├── src/hensurf/branding/  # HenSurf branding assets
 │   ├── BRANDING           # Main branding configuration file (used by setup-logo.sh)
 │   └── icons/             # Generated browser icons
 │       ├── icon_16.png    # 16x16 favicon
@@ -201,7 +201,7 @@ HenSurf/
 │       ├── icon_256.png   # 256x256 high-res icon
 │       ├── icon_512.png   # 512x512 retina icon
 │       └── icon_manifest.json # Icon metadata
-├── config/                # Build configuration
+├── src/hensurf/config/    # Build configuration
 │   ├── hensurf.gn         # GN build arguments
 │   └── features.json      # Feature configuration
 └── docs/                  # Documentation
@@ -231,11 +231,11 @@ If you encounter issues while building or running HenSurf, here are some common 
 *   **Clean Build Directory**: Sometimes, previous build artifacts can cause issues. If you suspect a corrupted build state, you can remove the specific target output directory before rebuilding. For example, if your Linux x64 build failed:
     ```bash
     # Be careful with rm -rf!
-    rm -rf chromium/src/out/HenSurf-linux-x64
+    rm -rf src/chromium/out/HenSurf-linux-x64
     ```
     Then, re-run `scripts/interactive_build.sh` or `scripts/build.sh`.
 *   **Check Logs**: Build and runtime logs can provide valuable information about what went wrong. Look for error messages in the console output. HenSurf build logs are now located in the target-specific output directory, e.g.:
-    `chromium/src/out/HenSurf-<os>-<arch>/build.log`
+    `src/chromium/out/HenSurf-<os>-<arch>/build.log`
 *   **Disk Space**: Ensure you have sufficient free disk space (at least 150GB recommended, more if building for multiple targets) as Chromium's source and build files are very large.
 *   **Memory Usage**: Building Chromium is memory-intensive. If the build fails with errors related to memory, ensure you have enough RAM (16GB+ recommended, 32GB+ for a smoother experience) and close other memory-heavy applications.
 *   **Consult Chromium Documentation**: For issues related to the underlying Chromium build system, the official [Chromium build documentation](https://www.chromium.org/developers/how-tos/get-the-code/) can be a helpful resource.

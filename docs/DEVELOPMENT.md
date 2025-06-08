@@ -1,5 +1,40 @@
 # HenSurf Development Guide
 
+## Table of Contents
+
+- [Development Environment Setup](#development-environment-setup)
+  - [Prerequisites](#prerequisites)
+  - [Quick Setup](#quick-setup)
+- [Development Workflow](#development-workflow)
+  - [Making Changes](#making-changes)
+  - [Creating Patches](#creating-patches)
+  - [Build Configurations](#build-configurations)
+- [Debugging](#debugging)
+  - [Common Issues](#common-issues)
+  - [Debugging Tools](#debugging-tools)
+- [Testing](#testing)
+  - [Manual Testing](#manual-testing)
+  - [Automated Testing](#automated-testing)
+- [Code Style](#code-style)
+  - [Chromium Style Guide](#chromium-style-guide)
+  - [HenSurf Conventions](#hensurf-conventions)
+  - [Code Review Checklist](#code-review-checklist)
+- [Performance Optimization](#performance-optimization)
+  - [Build Performance](#build-performance)
+  - [Runtime Performance](#runtime-performance)
+- [Release Process](#release-process)
+  - [Version Management](#version-management)
+  - [Build Release](#build-release)
+  - [Distribution](#distribution)
+- [Contributing Guidelines](#contributing-guidelines)
+  - [Pull Request Process](#pull-request-process)
+  - [Issue Reporting](#issue-reporting)
+  - [Security](#security)
+- [Resources](#resources)
+  - [Documentation](#documentation)
+  - [Tools](#tools)
+  - [Community](#community)
+
 This guide covers development workflows, debugging, and contribution guidelines for HenSurf.
 
 ## Development Environment Setup
@@ -14,11 +49,9 @@ This guide covers development workflows, debugging, and contribution guidelines 
 
 ### Quick Setup
 
-```bash
-# Clone HenSurf repository
-git clone <repository-url> HenSurf
-cd HenSurf
+This guide assumes you have already cloned the HenSurf repository and are in its root directory.
 
+```bash
 # Install dependencies
 ./scripts/install-deps.sh
 
@@ -54,16 +87,52 @@ cd HenSurf
 
 ### Creating Patches
 
-When making changes to Chromium source:
+Patches are how HenSurf modifies the Chromium source code. A patch file is a text file that lists the differences between the original Chromium code and the modified version for a specific feature or fix.
 
-```bash
-# Create a patch for your changes
-cd chromium/src
-git diff > ../../patches/my-feature.patch
+**1. Identify Changes for Your Patch:**
+   - Before creating a patch, ensure your changes are focused. A single patch should ideally address a single, logical change (e.g., remove one specific bloatware feature, fix one bug). Avoid bundling unrelated changes into one patch.
+   - Navigate to the Chromium source directory: `cd chromium/src`.
+   - Use `git status` to see which files you've modified.
+   - Use `git add <file_path>` for each file you want to include in the patch. This stages the changes for commit (though we are generating a diff, staging helps `git diff --staged`).
 
-# Add patch to apply-patches.sh
-echo 'patch -p1 < ../../patches/my-feature.patch' >> ../../scripts/apply-patches.sh
-```
+**2. Generate the Patch File:**
+   - Once you have staged the changes for your specific feature or fix, generate the patch file using `git diff`.
+   - It's crucial to be in the `chromium/src` directory.
+   - The output of `git diff --staged` is what you need for your patch file.
+   ```bash
+   cd chromium/src
+   # Ensure you've staged only the files relevant to this specific patch
+   # git add path/to/modified/file1.cc
+   # git add path/to/another/modified/file2.h
+
+   # Generate the patch relative to the HenSurf project root
+   git diff --staged > ../../patches/my-new-feature-or-fix.patch
+   ```
+   - **Naming Convention:** Use a descriptive name for your patch file, like `remove-profile-import-dialog.patch` or `fix-crash-on-settings-page.patch`.
+
+**3. Add Patch to Apply Script:**
+   - For your patch to be applied during the HenSurf build process, you must add it to the `./scripts/apply-patches.sh` script.
+   - Open `./scripts/apply-patches.sh` in a text editor.
+   - Add a line that applies your patch. Patches are typically applied with `patch -p1`. The `-p1` option tells the `patch` command to strip the first component from the file paths in the patch file (e.g., `a/chrome/browser/ui/some_file.cc` becomes `chrome/browser/ui/some_file.cc`), which is usually correct for patches generated from `chromium/src`.
+   ```bash
+   # Example line to add in apply-patches.sh
+   echo "Applying patch for my new feature or fix"
+   patch -p1 < ../../patches/my-new-feature-or-fix.patch
+   ```
+   - Place your patch in a logical order within `apply-patches.sh`, perhaps grouped with similar patches.
+
+**4. Test Patch Application:**
+   - After adding your patch to the script, you can test if it applies cleanly by running:
+   ```bash
+   # From the HenSurf project root
+   ./scripts/apply-patches.sh
+   ```
+   - If there are issues, you may need to regenerate your patch or adjust its position in the `apply-patches.sh` script.
+
+**Important Considerations for Patches:**
+   - **Atomicity:** Each patch should be as small as possible while addressing a single concern. This makes it easier to review, debug, and manage if Chromium upstream code changes.
+   - **Clarity:** Ensure your code changes within the patch are clean and follow the Chromium style guide.
+   - **Maintenance:** Patches can break when the underlying Chromium code changes. Be prepared to update your patches when pulling in new versions of Chromium. This is known as "rebasing" or "porting" patches.
 
 ### Build Configurations
 
@@ -290,21 +359,47 @@ autoninja -C chromium/src/out/HenSurf chrome/installer/mac
    git checkout -b feature/remove-more-bloat
    ```
 
-3. **Make Changes**
-   - Follow code style guidelines
-   - Add tests for new features
-   - Update documentation
+3. **Make Changes & Commit**
+   - Implement your feature or bug fix.
+   - Follow the [Code Style](#code-style) guidelines.
+   - Add tests for new features or to cover bug fixes.
+   - Update documentation if your changes affect usage or architecture.
+   - **Write Good Commit Messages:**
+     - Your commit messages are crucial for understanding the history of changes.
+     - Start with a short, descriptive subject line (e.g., `feat: Add option to disable foobar`, `fix: Correct crash when clicking baz`). Consider using a prefix like `feat:`, `fix:`, `docs:`, `style:`, `refactor:`, `test:`, `chore:`.
+     - If the subject line isn't enough, leave a blank line and then write a more detailed explanation in the commit body. Explain *what* the change is and *why* you made it.
+     - Example:
+       ```
+       feat: Add option to disable search suggestions in omnibox
 
-4. **Test Changes**
-   ```bash
-   ./scripts/build.sh
-   # Manual testing
-   ```
+       This commit introduces a new preference in the settings page
+       (Privacy section) that allows users to disable search
+       suggestions that appear in the omnibox dropdown. This enhances
+       user privacy by preventing queries from being sent to the default
+       search provider until the user explicitly navigates.
 
-5. **Submit Pull Request**
-   - Clear description of changes
-   - Reference any related issues
-   - Include testing instructions
+       Addresses issue #123.
+       ```
+   - Commit your changes locally: `git commit -m "Your descriptive commit message"`
+
+4. **Test Changes Thoroughly**
+   - Rebuild HenSurf with your changes:
+     ```bash
+     ./scripts/build.sh
+     ```
+   - Perform manual testing as described in the [Testing](#testing) section.
+   - Run relevant automated tests if applicable.
+
+5. **Submit Pull Request (PR)**
+   - Push your feature branch to your fork on GitHub: `git push origin feature/your-feature-name`
+   - Go to the HenSurf GitHub repository and you should see a prompt to create a new Pull Request from your pushed branch.
+   - **Write a Clear PR Description:**
+     - **Title:** Similar to your commit message subject, make it clear and concise.
+     - **Link to Issues:** If your PR addresses an existing GitHub issue, include "Fixes #issue-number" or "Closes #issue-number" in the description. This will automatically link the PR to the issue and close the issue when the PR is merged.
+     - **Summary of Changes:** Briefly explain what the PR does. What problem does it solve or what feature does it add?
+     - **How to Test:** Provide clear, step-by-step instructions on how a reviewer can test your changes. This is very important!
+     - **Screenshots/GIFs (if applicable):** For UI changes, include screenshots or GIFs to visually demonstrate the changes.
+     - **Self-Review Checklist:** Mention if you've followed the code style, added tests, updated docs, etc. (refer to the [Code Review Checklist](#code-review-checklist)).
 
 ### Issue Reporting
 

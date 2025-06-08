@@ -1,5 +1,53 @@
 # HenSurf Privacy Policy
 
+## Table of Contents
+
+- [Privacy Philosophy](#privacy-philosophy)
+- [Data Collection](#data-collection)
+  - [What We DON'T Collect](#what-we-dont-collect)
+  - [What We Collect (Minimal)](#what-we-collect-minimal)
+- [Default Privacy Settings](#default-privacy-settings)
+  - [Search Engine](#search-engine)
+  - [Tracking Protection](#tracking-protection)
+  - [Network Privacy](#network-privacy)
+  - [Storage](#storage)
+- [Removed Privacy Risks](#removed-privacy-risks)
+  - [Google Services Integration](#google-services-integration)
+  - [AI and Machine Learning](#ai-and-machine-learning)
+  - [Telemetry and Analytics](#telemetry-and-analytics)
+- [Data Storage](#data-storage)
+  - [Local Storage Only](#local-storage-only)
+  - [Data Encryption](#data-encryption)
+  - [Data Retention](#data-retention)
+- [Network Communications](#network-communications)
+  - [Outbound Connections](#outbound-connections)
+  - [Blocked Connections](#blocked-connections)
+- [User Controls](#user-controls)
+  - [Privacy Settings](#privacy-settings)
+  - [Data Management](#data-management)
+  - [Advanced Privacy](#advanced-privacy)
+- [Extensions and Add-ons](#extensions-and-add-ons)
+  - [Extension Privacy](#extension-privacy)
+  - [Recommended Extensions](#recommended-extensions)
+- [Comparison with Other Browsers](#comparison-with-other-browsers)
+- [Security Measures](#security-measures)
+  - [Code Security](#code-security)
+  - [Network Security](#network-security)
+  - [Sandboxing](#sandboxing)
+- [Transparency](#transparency)
+  - [Open Source](#open-source)
+  - [Regular Audits](#regular-audits)
+- [Legal Compliance](#legal-compliance)
+  - [GDPR Compliance](#gdpr-compliance)
+  - [CCPA Compliance](#ccpa-compliance)
+- [Contact and Support](#contact-and-support)
+  - [Privacy Questions](#privacy-questions)
+  - [Security Issues](#security-issues)
+- [Updates to This Policy](#updates-to-this-policy)
+  - [Change Process](#change-process)
+  - [Version History](#version-history)
+- [Conclusion](#conclusion)
+
 HenSurf is designed with privacy as a core principle. This document explains our privacy practices and how we protect your data.
 
 ## Privacy Philosophy
@@ -16,9 +64,9 @@ HenSurf believes that:
 
 ❌ **Browsing History**: We don't track or store your browsing history
 ❌ **Search Queries**: Your searches are not logged or analyzed
-❌ **Personal Information**: No collection of names, emails, or personal data
-❌ **Usage Analytics**: No telemetry or usage statistics
-❌ **Location Data**: No tracking of your physical location
+❌ **Personal Information**: No collection of names, emails, or other directly identifiable personal data.
+❌ **Usage Analytics (Telemetry)**: We don't collect data about how you use the browser, such as which features you use or how often you browse (this is often called "telemetry").
+❌ **Location Data**: HenSurf does not track your physical location.
 ❌ **Behavioral Profiles**: No creation of user profiles or behavioral analysis
 ❌ **AI Training Data**: Your data is never used to train AI models
 ❌ **Cross-Site Tracking**: No tracking across websites
@@ -47,15 +95,15 @@ HenSurf ships with privacy-focused defaults:
 - **No Suggestions**: No search suggestions that leak queries
 
 ### Tracking Protection
-- **Third-party cookies**: Blocked by default
-- **Cross-site tracking**: Prevented
-- **Fingerprinting protection**: Enabled
-- **Referrer policy**: Strict
+- **Third-party cookies**: Blocked by default (cookies set by sites other than the one you are currently visiting, often used for tracking).
+- **Cross-site tracking**: Actively prevented (techniques websites use to track your activity across different, unrelated sites).
+- **Fingerprinting protection**: Enabled (helps prevent sites from creating a unique "fingerprint" of your browser based on its configuration, which can be used for tracking even without cookies).
+- **Referrer policy**: Strict (limits the information sent to websites about where you came from).
 
 ### Network Privacy
-- **DNS-over-HTTPS**: Enabled with privacy-focused providers
-- **Safe Browsing**: Local lists only (no Google Safe Browsing)
-- **Preloading**: Disabled to prevent data leakage
+- **DNS-over-HTTPS (DoH)**: Enabled with privacy-focused providers. This helps hide your DNS queries (the "phonebook" lookups for websites) from anyone listening on the network by encrypting them.
+- **Safe Browsing**: Uses locally stored lists of known malicious websites (no sending of your browsing activity to Google's Safe Browsing service).
+- **Preloading**: Disabled by default. Preloading can speed up browsing by guessing what you might click next and loading it in advance, but it can also send information about your browsing habits to websites you haven't explicitly visited.
 
 ### Storage
 - **Local storage**: Cleared on exit (optional)
@@ -74,18 +122,20 @@ HenSurf ships with privacy-focused defaults:
 - ❌ Google location services
 
 ### AI and Machine Learning
-- ❌ AI-powered suggestions
-- ❌ Predictive text
-- ❌ Smart autofill
-- ❌ Behavioral analysis
-- ❌ Usage pattern learning
+HenSurf removes features that rely on AI and machine learning to analyze your behavior or data, such as:
+- ❌ AI-powered suggestions (e.g., for search or shopping).
+- ❌ Predictive text that learns from your typing.
+- ❌ Smart autofill that tries to guess information beyond basic form filling.
+- ❌ Behavioral analysis for targeted advertising or recommendations.
+- ❌ Usage pattern learning by the browser.
 
 ### Telemetry and Analytics
-- ❌ Usage statistics
-- ❌ Performance metrics
-- ❌ Feature usage tracking
-- ❌ Error reporting (unless explicitly enabled)
-- ❌ A/B testing data
+As mentioned, HenSurf disables features that send data about your browser usage (telemetry) to any central server. This includes:
+- ❌ Usage statistics (how often features are used).
+- ❌ Performance metrics (how fast the browser is running on your device, sent to external servers).
+- ❌ Feature usage tracking (which specific buttons or options you interact with).
+- ❌ Error reporting (automatic submission of crash or error data, unless you explicitly enable basic, non-personal crash reports).
+- ❌ A/B testing data (data used to test different versions of features on users).
 
 ## Data Storage
 
@@ -170,7 +220,7 @@ Users can control:
 | Default Ad Blocking | ⚠️ | ❌ | ⚠️ | ❌ | ✅ |
 | Privacy-First Search | ✅ | ❌ | ⚠️ | ⚠️ | ✅ |
 | Local Data Only | ✅ | ❌ | ⚠️ | ⚠️ | ⚠️ |
-| Open Source | ✅*| ⚠️ | ❌ | ✅ | ✅ |
+| Open Source | ✅ | ⚠️ | ❌ | ✅ | ✅ |
 
 ## Security Measures
 
@@ -181,24 +231,25 @@ Users can control:
 - Code review for all changes
 
 ### Network Security
-- HTTPS-only mode available
-- Certificate transparency
-- HSTS enforcement
-- Secure DNS by default
+- **HTTPS-only mode available**: A setting to ensure you only connect to websites over an encrypted connection (HTTPS).
+- **Certificate Transparency**: A system that helps detect fake or malicious website security certificates. HenSurf checks that website certificates are publicly logged, making it harder for attackers to impersonate websites.
+- **HSTS enforcement (HTTP Strict Transport Security)**: A mechanism that forces browsers to only connect to websites using HTTPS, even if you type `http://` in the address bar. This helps prevent downgrade attacks.
+- **Secure DNS by default**: As mentioned with DoH, your DNS lookups are encrypted.
 
 ### Sandboxing
-- Process isolation
-- Site isolation
-- Extension sandboxing
-- Plugin containment
+Sandboxing is a critical security feature that isolates browser components and websites from each other and from your main computer system. This means if a website or a part of the browser is compromised, the damage is contained.
+- **Process isolation**: Different parts of the browser (like tabs, extensions) run in separate processes. If one process crashes or is compromised, it's less likely to affect others.
+- **Site isolation**: Each website is typically run in its own process, preventing malicious sites from accessing data from other open sites.
+- **Extension sandboxing**: Extensions are run in a restricted environment with limited access to your system.
+- **Plugin containment**: Plugins (if any were supported) would also run in a sandbox.
 
 ## Transparency
 
-### Open Source*
-- Full source code available
-- Build process documented
-- Reproducible builds
-- Community auditing encouraged
+### Open Source
+- **Full source code available**: Anyone can view, inspect, and study the source code of HenSurf to understand how it works and verify its privacy claims.
+- **Build process documented**: The steps to compile HenSurf from its source code are public.
+- **Reproducible builds**: This means that anyone should be able to compile the source code and get an identical, verifiable copy of the browser. This helps ensure that the distributed browser matches the public source code. (This is a goal, and may be complex to achieve perfectly for large projects like Chromium).
+- **Community auditing encouraged**: We encourage developers and security researchers to examine our code and report any potential privacy or security issues.
 
 ### Regular Audits
 - Privacy impact assessments

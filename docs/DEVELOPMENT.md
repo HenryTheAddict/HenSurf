@@ -54,20 +54,26 @@ This guide covers development workflows, debugging, and contribution guidelines 
 This guide assumes you have already cloned the HenSurf repository and are in its root directory.
 
 ```bash
-# Install dependencies
+# 1. Install dependencies (guides through Python, Git, Ninja, depot_tools, etc.)
 ./scripts/install-deps.sh
 
-# Fetch Chromium source (takes 30-60 minutes)
+# 2. Fetch Chromium source code (can take 30-60+ minutes and ~100GB)
 ./scripts/fetch-chromium.sh
+# This script now offers an optional enhanced sync for full history.
 
-# Apply HenSurf customizations
+# 3. Apply HenSurf customizations (patches, branding files, code generation)
 ./scripts/apply-patches.sh
+# This script orchestrates applying .patch files and calls setup-logo.sh.
 
-# Build HenSurf (takes 2-8 hours)
-./scripts/build.sh
+# 4. Build HenSurf (can take 2-8+ hours)
+./scripts/interactive_build.sh
+# This is the recommended way to build, offering a menu for common targets.
+# Alternatively, use ./scripts/build.sh directly for specific configurations.
 ```
 
-**Note for macOS users**: The `install-deps.sh` script will install necessary dependencies using Homebrew (including `ccache` for faster builds) and guide you through Xcode Command Line Tools setup. The `build.sh` script automatically detects your Mac's architecture (Intel x64 or Apple Silicon arm64) to configure the build correctly.
+**Note for macOS users**: `install-deps.sh` assists with Homebrew and Xcode Command Line Tools. `interactive_build.sh` or `build.sh` (when run without target env vars) will default to your Mac's native architecture (Intel x64 or Apple Silicon arm64). `setup-logo.sh` (called by `apply-patches.sh`) will attempt to create `.icns` files using `iconutil`.
+
+**Note for Windows users**: Ensure you are using Git Bash for all `.sh` scripts. `install-deps.sh` will guide on Visual Studio, Python, Git, and Ninja. `setup-logo.sh` (called by `apply-patches.sh`) will attempt to create `.ico` files using ImageMagick's `convert` if available.
 
 ## Development Workflow
 
@@ -115,23 +121,20 @@ Patches are how HenSurf modifies the Chromium source code. A patch file is a tex
    - **Naming Convention:** Use a descriptive name for your patch file, like `remove-profile-import-dialog.patch` or `fix-crash-on-settings-page.patch`.
 
 **3. Add Patch to Apply Script:**
-   - For your patch to be applied during the HenSurf build process, you must add it to the `./scripts/apply-patches.sh` script.
-   - Open `./scripts/apply-patches.sh` in a text editor.
-   - Add a line that applies your patch. Patches are typically applied with `patch -p1`. The `-p1` option tells the `patch` command to strip the first component from the file paths in the patch file (e.g., `a/chrome/browser/ui/some_file.cc` becomes `chrome/browser/ui/some_file.cc`), which is usually correct for patches generated from `chromium/src`.
-   ```bash
-   # Example line to add in apply-patches.sh
-   echo "Applying patch for my new feature or fix"
-   patch -p1 < ../../patches/my-new-feature-or-fix.patch
-   ```
-   - Place your patch in a logical order within `apply-patches.sh`, perhaps grouped with similar patches.
+   - For your patch to be applied during the HenSurf build process, ensure it's in the `patches/` directory.
+   - The `scripts/apply-patches.sh` script attempts to apply key patches like `remove-ai-features.patch` and `integrate-logo.patch`. If you are adding a new, separate feature patch, you might use `scripts/apply_feature_patches.sh apply your-patch-name` for testing, or integrate it into the main `apply-patches.sh` if it's a core HenSurf modification.
+   - Patches are typically applied with `patch -p1` relative to the `chromium/src` directory.
 
 **4. Test Patch Application:**
-   - After adding your patch to the script, you can test if it applies cleanly by running:
+   - If you've modified `apply-patches.sh` or are testing a feature patch:
    ```bash
-   # From the HenSurf project root
+   # From the HenSurf project root, after navigating into chromium/src if needed by your test
+   # (apply-patches.sh handles its own cd into src)
    ./scripts/apply-patches.sh
+   # or for a specific feature patch:
+   # ./scripts/apply_feature_patches.sh apply your-patch-name
    ```
-   - If there are issues, you may need to regenerate your patch or adjust its position in the `apply-patches.sh` script.
+   - If there are issues (`.rej` files created), you may need to regenerate your patch or adjust it for current Chromium source.
 
 **Important Considerations for Patches:**
    - **Atomicity:** Each patch should be as small as possible while addressing a single concern. This makes it easier to review, debug, and manage if Chromium upstream code changes.
@@ -242,15 +245,32 @@ autoninja -C out/HenSurf unit_tests
 
 #### Browser Tests
 ```bash
-# Run browser tests
+# Build browser_tests (if not already built)
 autoninja -C out/HenSurf browser_tests
+
+# Run browser_tests (example filter)
+# Use a specific output directory if your build was not in out/HenSurf
 ./out/HenSurf/browser_tests --gtest_filter=*Privacy*
+# On Linux, this might require xvfb-run if not running in a headless environment already configured.
+# e.g., xvfb-run -a ./out/HenSurf/browser_tests --gtest_filter=*Privacy*
+```
+
+#### Using `run_all_tests.py`
+The `scripts/run_all_tests.py` script provides a unified way to run custom tests, build test suites, and execute them.
+```bash
+# List available test suites/targets (conceptual)
+python3 scripts/run_all_tests.py --list-tests
+
+# Example: Run custom scripts and specific browser tests on Linux
+python3 scripts/run_all_tests.py --platform linux --output-dir chromium/src/out/HenSurf-linux-x64 --run-chromium-tests browser_tests:BrowserTest.Sanity
 ```
 
 #### Performance Tests
 ```bash
-# Build performance test tools
+# Build performance test tools (example suite)
 autoninja -C out/HenSurf performance_test_suite
+# Running performance tests often involves specific harnesses and metrics.
+# Refer to Chromium's performance testing documentation for details.
 ```
 
 ## Code Style
@@ -437,34 +457,51 @@ autoninja -C chromium/src/out/HenSurf chrome/installer/mac
 ## Resources
 
 ### Documentation
-- [Chromium Development](https://chromium.googlesource.com/chromium/src/+/main/docs/)
+- [Chromium Development Docs](https://www.chromium.org/developers/)
+- [Chromium Build Instructions (General)](https://www.chromium.org/developers/how-tos/get-the-code/)
 - [GN Build System](https://gn.googlesource.com/gn/+/main/docs/)
 - [Ninja Build](https://ninja-build.org/manual.html)
 
 ### Tools
-- [depot_tools](https://chromium.googlesource.com/chromium/tools/depot_tools)
-- [GN Reference](https://gn.googlesource.com/gn/+/main/docs/reference.md)
-- [Chromium Code Search](https://source.chromium.org/)
+- `depot_tools`: Managed by `scripts/install-deps.sh`.
+- `gclient`: Part of `depot_tools`, used for managing Chromium checkout.
+- `gn`: Build configuration generator.
+- `autoninja`: Wrapper for `ninja` build system.
+- [Chromium Code Search](https://source.chromium.org/chromium)
 
 ### Community
-- GitHub Issues for bug reports
-- Discussions for feature requests
-- Wiki for additional documentation
+- HenSurf GitHub Issues: For bug reports and feature tracking specific to HenSurf.
+- HenSurf GitHub Discussions: For questions, ideas, and general discussion.
+
+## Branding and Logo Setup
+
+The branding assets (icons, `BRANDING` file) are located in the `branding/` directory.
+The `scripts/setup-logo.sh` script is responsible for:
+- Copying all PNG icons to their correct locations within `chromium/src/chrome/app/theme/`.
+- Generating `chrome.ico` for Windows (if ImageMagick `convert` is available).
+- Generating `app.icns` for macOS (if `iconutil` is available on a macOS host).
+- Creating/updating `chromium/src/chrome/app/chrome_exe.ver` with HenSurf branding details for Windows executables.
+- Copying the `branding/BRANDING` file to `chromium/src/chrome/app/theme/hensurf/BRANDING`.
+
+This script is called automatically by `scripts/apply-patches.sh` after other patches are applied.
+If you only need to update logo/icon files after making changes in the `branding/icons/` directory, you can run `scripts/setup-logo.sh` directly (ensure you are in the project root, or that the script can correctly find `PROJECT_ROOT` and `CHROMIUM_SRC`).
 
 ## Fast Developer Builds
 
-The `scripts/build.sh` script includes a `--dev-fast` flag to enable a developer-focused build mode that can significantly speed up local build times, especially for incremental changes.
+The `scripts/interactive_build.sh` script is the recommended way to start builds. For faster iteration during development, you can also use `scripts/build.sh` directly with the `--dev-fast` flag:
 
-To use it, run:
 ```bash
 ./scripts/build.sh --dev-fast
+# This will build for your native OS and architecture.
+# You can combine it with HENSURF_TARGET_OS, HENSURF_TARGET_CPU, HENSURF_OUTPUT_DIR
+# environment variables for specific targets if needed.
 ```
 
-This flag sets the following GN arguments:
+This flag typically sets GN arguments like:
 - `is_component_build = true`: Builds Chromium modules as separate shared libraries. This dramatically speeds up link times for incremental builds as only modified components need to be relinked.
-- `treat_warnings_as_errors = false`: Allows the build to continue even if new warnings are encountered. This can be useful during active development to avoid getting blocked by minor warnings.
+- `treat_warnings_as_errors = false`: Allows the build to continue even if new warnings are encountered.
 
-**Important Considerations:**
+**Important Considerations for Dev Fast Builds:**
 - Builds created with `--dev-fast` are **not suitable for distribution or release**. They are intended for local development and testing only.
 - Component builds may have a slight runtime performance overhead compared to monolithic builds.
-- While `treat_warnings_as_errors = false` can speed up iteration, it's recommended to address warnings before finalizing changes or submitting them for CI/release builds.
+- While `treat_warnings_as_errors = false` can speed up iteration, it's crucial to address warnings before finalizing changes or submitting them for CI/release builds.

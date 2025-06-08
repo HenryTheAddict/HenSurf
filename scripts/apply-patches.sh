@@ -15,6 +15,7 @@ LOG_FILE="$PROJECT_ROOT/apply-patches.log"
 true >"$LOG_FILE"
 
 START_TIME=$(date +%s)
+PATCH_FAILURES_LIST=() # Array to keep track of failed patches
 
 # Function to log progress with timing (uses utils.sh _log)
 log_progress() {
@@ -82,60 +83,67 @@ if [ ! -d "$CHROMIUM_SRC_DIR" ]; then
     exit 1
 fi
 
-cd "$CHROMIUM_SRC_DIR"
-log_info "📂 Changed to chromium/src directory ($(pwd))" | tee -a "$LOG_FILE"
+safe_cd "$CHROMIUM_SRC_DIR" # Using safe_cd from utils.sh
+# log_info message for successful cd is handled by safe_cd itself.
 
 log_info "📋 Starting patch application..." | tee -a "$LOG_FILE"
 
 # Apply main AI removal patch
-log_info "🤖 Starting AI features removal..." | tee -a "$LOG_FILE"
-if patch -p1 --dry-run < "$PROJECT_ROOT/patches/remove-ai-features.patch" > /dev/null 2>&1; then
-    log_info "[PATCH] Applying AI features removal patch..." | tee -a "$LOG_FILE"
-    if patch -p1 < "$PROJECT_ROOT/patches/remove-ai-features.patch" 2>&1 | tee -a "$LOG_FILE"; then
-        log_success "✅ AI features patch applied successfully" | tee -a "$LOG_FILE"
-    else
-        log_error "❌ AI features patch failed" | tee -a "$LOG_FILE"
-        exit 1
-    fi
+log_info "🤖 Applying 'remove-ai-features.patch'..." | tee -a "$LOG_FILE"
+# Attempt to apply the patch.
+if patch -p1 --forward < "$PROJECT_ROOT/patches/remove-ai-features.patch" 2>&1 | tee -a "$LOG_FILE"; then
+    log_success "✅ 'remove-ai-features.patch' applied successfully." | tee -a "$LOG_FILE"
 else
-    log_warn "⚠️ AI features patch may already be applied or conflicts exist" | tee -a "$LOG_FILE"
+    # Store exit code of the patch command
+    PATCH_STATUS=$?
+    if [ $PATCH_STATUS -eq 1 ]; then # Exit code 1 typically means conflicts or already applied
+        log_warn "⚠️ 'remove-ai-features.patch' failed to apply cleanly (exit code $PATCH_STATUS). It might be partially applied, already applied, or have conflicts. Continuing script." | tee -a "$LOG_FILE"
+        # Optionally, try to reverse it if it's partially applied and that's desired.
+        # For now, we just warn and continue.
+        # patch -p1 -R < "$PROJECT_ROOT/patches/remove-ai-features.patch" > /dev/null 2>&1 || true
+        PATCH_FAILURES_LIST+=("remove-ai-features.patch (conflicts/already applied)")
+    else # Other non-zero exit codes
+        log_warn "❌ 'remove-ai-features.patch' failed with unexpected exit code $PATCH_STATUS. Continuing script." | tee -a "$LOG_FILE"
+        PATCH_FAILURES_LIST+=("remove-ai-features.patch (error code $PATCH_STATUS)")
+    fi
 fi
 log_progress "AI_REMOVAL"
 
 log_info "ℹ️ Bloatware removal via patch is currently disabled. Feature is controlled by HENSURF_ENABLE_BLOATWARE GN arg." | tee -a "$LOG_FILE"
 
 # Apply logo integration patch
-log_info "🎨 Starting logo integration..." | tee -a "$LOG_FILE"
-log_info "[PATCH] Reading patch: $PROJECT_ROOT/patches/integrate-logo.patch" | tee -a "$LOG_FILE"
-if patch -p1 < "$PROJECT_ROOT/patches/integrate-logo.patch" 2>&1 | tee -a "$LOG_FILE"; then
-    log_success "✅ Logo integration patch applied successfully" | tee -a "$LOG_FILE"
+log_info "🎨 Applying 'integrate-logo.patch'..." | tee -a "$LOG_FILE"
+if patch -p1 --forward < "$PROJECT_ROOT/patches/integrate-logo.patch" 2>&1 | tee -a "$LOG_FILE"; then
+    log_success "✅ 'integrate-logo.patch' applied successfully." | tee -a "$LOG_FILE"
 else
-    log_error "❌ Failed to apply logo integration patch" | tee -a "$LOG_FILE"
-    exit 1
+    PATCH_STATUS=$?
+    if [ $PATCH_STATUS -eq 1 ]; then
+        log_warn "⚠️ 'integrate-logo.patch' failed to apply cleanly (exit code $PATCH_STATUS). It might be partially applied, already applied, or have conflicts. Continuing script." | tee -a "$LOG_FILE"
+        PATCH_FAILURES_LIST+=("integrate-logo.patch (conflicts/already applied)")
+    else
+        log_warn "❌ 'integrate-logo.patch' failed with unexpected exit code $PATCH_STATUS. Continuing script." | tee -a "$LOG_FILE"
+        PATCH_FAILURES_LIST+=("integrate-logo.patch (error code $PATCH_STATUS)")
+    fi
 fi
 log_progress "LOGO_INTEGRATION"
 
-# Copy branding files
-log_info "🏷️ Applying HenSurf branding..." | tee -a "$LOG_FILE"
-log_info "Creating directory chrome/app/theme/hensurf for branding..." | tee -a "$LOG_FILE"
-mkdir -p chrome/app/theme/hensurf
-log_info "Copying $PROJECT_ROOT/branding/BRANDING to chrome/app/theme/hensurf/BRANDING..." | tee -a "$LOG_FILE"
-cp "$PROJECT_ROOT/branding/BRANDING" chrome/app/theme/hensurf/
-log_success "✅ Branding files copied" | tee -a "$LOG_FILE"
-log_progress "BRANDING"
-
 # Create custom build configuration
+# This is done before setup-logo.sh as setup-logo.sh might place files
+# referenced by the build configuration (e.g. if args.gn refers to specific theme files).
+# However, the BRANDING file copy itself has been moved to setup-logo.sh.
 log_info "⚙️ Setting up build configuration..." | tee -a "$LOG_FILE"
-log_info "Creating directory out/HenSurf for build configuration..." | tee -a "$LOG_FILE"
-mkdir -p out/HenSurf
-log_info "Copying $PROJECT_ROOT/config/hensurf.gn to out/HenSurf/args.gn..." | tee -a "$LOG_FILE"
+log_info "   Creating directory out/HenSurf for build configuration (if it doesn't exist)..." | tee -a "$LOG_FILE"
+mkdir -p out/HenSurf # Default build dir, can be overridden by HENSURF_OUTPUT_DIR in build.sh
+log_info "   Copying $PROJECT_ROOT/config/hensurf.gn to out/HenSurf/args.gn..." | tee -a "$LOG_FILE"
+# This args.gn will be used by `gn gen out/HenSurf` or if HENSURF_OUTPUT_DIR is not set.
+# If HENSURF_OUTPUT_DIR is set in build.sh, that script will handle its own args.gn.
 cp "$PROJECT_ROOT/config/hensurf.gn" out/HenSurf/args.gn
-log_success "✅ Build configuration created" | tee -a "$LOG_FILE"
+log_success "✅ Default build configuration created at out/HenSurf/args.gn." | tee -a "$LOG_FILE"
 log_progress "BUILD_CONFIG"
 
 # Modify default search engine
 log_info "🔍 Setting DuckDuckGo as default search engine..." | tee -a "$LOG_FILE"
-log_info "Creating components/search_engines/hensurf_engines.cc..." | tee -a "$LOG_FILE"
+log_info "   Creating components/search_engines/hensurf_engines.cc..." | tee -a "$LOG_FILE"
 cat > components/search_engines/hensurf_engines.cc << 'EOF'
 // HenSurf custom search engines
 #include "components/search_engines/search_engines_pref_names.h"
@@ -162,12 +170,12 @@ const PrepopulatedEngine duckduckgo = {
 
 }  // namespace TemplateURLPrepopulateData
 EOF
-log_success "✅ Created components/search_engines/hensurf_engines.cc" | tee -a "$LOG_FILE"
+log_success "✅ Created components/search_engines/hensurf_engines.cc." | tee -a "$LOG_FILE"
 log_progress "SEARCH_ENGINE"
 
 # Disable Google API keys
 log_info "🔑 Disabling Google API integration..." | tee -a "$LOG_FILE"
-log_info "Creating google_apis/google_api_keys.cc to disable Google API calls..." | tee -a "$LOG_FILE"
+log_info "   Creating google_apis/google_api_keys.cc to disable Google API calls..." | tee -a "$LOG_FILE"
 cat > google_apis/google_api_keys.cc << 'EOF'
 // HenSurf - Disable Google API keys
 #include "google_apis/google_api_keys.h"
@@ -182,21 +190,21 @@ bool HasOAuthConfigured() { return false; }
 
 }  // namespace google_apis
 EOF
-log_success "✅ Created google_apis/google_api_keys.cc" | tee -a "$LOG_FILE"
+log_success "✅ Created google_apis/google_api_keys.cc." | tee -a "$LOG_FILE"
 log_progress "API_DISABLE"
 
 # Remove promotional content
 log_info "📢 Removing promotional content..." | tee -a "$LOG_FILE"
-log_info "Searching for and removing promo files in chrome/browser/ui..." | tee -a "$LOG_FILE"
+log_info "   Searching for and removing promo files in chrome/browser/ui..." | tee -a "$LOG_FILE"
 find chrome/browser/ui -name "*promo*" -type f -print -exec rm -f {} \; 2>/dev/null || true
-log_info "Searching for and removing welcome files in chrome/browser/ui..." | tee -a "$LOG_FILE"
+log_info "   Searching for and removing welcome files in chrome/browser/ui..." | tee -a "$LOG_FILE"
 find chrome/browser/ui -name "*welcome*" -type f -print -exec rm -f {} \; 2>/dev/null || true
-log_success "✅ Promotional content removal attempt finished" | tee -a "$LOG_FILE"
+log_success "✅ Promotional content removal attempt finished." | tee -a "$LOG_FILE"
 log_progress "PROMO_REMOVAL"
 
 # Disable crash reporting by default
 log_info "💥 Disabling crash reporting..." | tee -a "$LOG_FILE"
-log_info "Creating components/crash/core/common/crash_key.cc to disable crash reporting..." | tee -a "$LOG_FILE"
+log_info "   Creating components/crash/core/common/crash_key.cc to disable crash reporting..." | tee -a "$LOG_FILE"
 cat > components/crash/core/common/crash_key.cc << 'EOF'
 // HenSurf - Disable crash reporting
 #include "components/crash/core/common/crash_key.h"
@@ -207,24 +215,24 @@ void ClearCrashKey(const std::string& key) {}
 void SetCrashKeyToInt(const std::string& key, int value) {}
 }  // namespace crash_keys
 EOF
-log_success "✅ Created components/crash/core/common/crash_key.cc" | tee -a "$LOG_FILE"
+log_success "✅ Created components/crash/core/common/crash_key.cc." | tee -a "$LOG_FILE"
 log_progress "CRASH_DISABLE"
 
 # Update version info
 log_info "📝 Updating version information in chrome/VERSION..." | tee -a "$LOG_FILE"
-# Log actual sed commands for clarity, though output is suppressed by tee for these.
-log_info "Running: sed -i.bak 's/PRODUCT_FULLNAME=Chromium/PRODUCT_FULLNAME=HenSurf Browser/' chrome/VERSION"
-sed -i.bak 's/PRODUCT_FULLNAME=Chromium/PRODUCT_FULLNAME=HenSurf Browser/' chrome/VERSION
-log_info "Running: sed -i.bak 's/PRODUCT_SHORTNAME=Chromium/PRODUCT_SHORTNAME=HenSurf/' chrome/VERSION"
-sed -i.bak 's/PRODUCT_SHORTNAME=Chromium/PRODUCT_SHORTNAME=HenSurf/' chrome/VERSION
-log_info "Removing backup file chrome/VERSION.bak..." | tee -a "$LOG_FILE"
+# Using more specific sed commands to avoid accidental replacements.
+log_info "   Running: sed -i.bak 's|^PRODUCT_FULLNAME=Chromium$|PRODUCT_FULLNAME=HenSurf Browser|' chrome/VERSION" | tee -a "$LOG_FILE"
+sed -i.bak 's|^PRODUCT_FULLNAME=Chromium$|PRODUCT_FULLNAME=HenSurf Browser|' chrome/VERSION
+log_info "   Running: sed -i.bak 's|^PRODUCT_SHORTNAME=Chromium$|PRODUCT_SHORTNAME=HenSurf|' chrome/VERSION" | tee -a "$LOG_FILE"
+sed -i.bak 's|^PRODUCT_SHORTNAME=Chromium$|PRODUCT_SHORTNAME=HenSurf|' chrome/VERSION
+log_info "   Removing backup file chrome/VERSION.bak..." | tee -a "$LOG_FILE"
 rm -f chrome/VERSION.bak
-log_success "✅ Version information updated" | tee -a "$LOG_FILE"
+log_success "✅ Version information updated." | tee -a "$LOG_FILE"
 log_progress "VERSION_UPDATE"
 
 # Create HenSurf-specific user agent
 log_info "🌐 Customizing user agent..." | tee -a "$LOG_FILE"
-log_info "Creating components/version_info/hensurf_version_info.cc for custom user agent..." | tee -a "$LOG_FILE"
+log_info "   Creating 'components/version_info/hensurf_version_info.cc' for custom user agent..." | tee -a "$LOG_FILE"
 cat > components/version_info/hensurf_version_info.cc << 'EOF'
 #include "components/version_info/version_info.h"
 
@@ -240,43 +248,80 @@ std::string GetProductNameAndVersionForUserAgent() {
 
 }  // namespace version_info
 EOF
-log_success "✅ Created components/version_info/hensurf_version_info.cc" | tee -a "$LOG_FILE"
+log_success "✅ Created components/version_info/hensurf_version_info.cc." | tee -a "$LOG_FILE"
 log_progress "USER_AGENT"
 
-log_info "🎨 Setting up HenSurf logo and icons using setup-logo.sh..." | tee -a "$LOG_FILE"
+# Call setup-logo.sh to place all physical icon and branding files.
+# This should be done after patches are applied, as patches might affect directory structures
+# or build files that setup-logo.sh relies on or that reference assets it places.
+log_info "🎨 Executing 'scripts/setup-logo.sh' to place icon and branding files..." | tee -a "$LOG_FILE"
 SETUP_LOGO_SCRIPT="$PROJECT_ROOT/scripts/setup-logo.sh"
+
 if [ -f "$SETUP_LOGO_SCRIPT" ]; then
-    log_info "[SCRIPT] Executing setup-logo.sh" | tee -a "$LOG_FILE"
     # Ensure it's executable
     chmod +x "$SETUP_LOGO_SCRIPT"
-    # Execute from project root context or ensure script handles relative paths correctly
-    (cd "$PROJECT_ROOT" && "$SETUP_LOGO_SCRIPT" ) 2>&1 | tee -a "$LOG_FILE"
-    log_success "✅ Logo setup completed" | tee -a "$LOG_FILE"
+    # Execute setup-logo.sh. It cds into chromium/src itself.
+    # We are already in chromium/src, but setup-logo.sh is written to be callable from project root too.
+    # To ensure it behaves as expected when called from apply-patches.sh (already in src),
+    # it's fine to call it directly. It uses PROJECT_ROOT for paths to branding assets.
+    if "$SETUP_LOGO_SCRIPT" 2>&1 | tee -a "$LOG_FILE"; then
+        log_success "✅ 'scripts/setup-logo.sh' executed successfully." | tee -a "$LOG_FILE"
+    else
+        log_warn "⚠️ 'scripts/setup-logo.sh' execution reported errors. Check log." | tee -a "$LOG_FILE"
+        # Decide if this is a fatal error for apply-patches.sh or not.
+        # For now, log as warning and continue.
+        PATCH_FAILURES_LIST+=("setup-logo.sh execution")
+    fi
 else
-    log_warn "⚠️ setup-logo.sh not found at $SETUP_LOGO_SCRIPT, skipping logo setup" | tee -a "$LOG_FILE"
+    log_error "❌ Critical script 'scripts/setup-logo.sh' not found at '$SETUP_LOGO_SCRIPT'. Cannot proceed with logo/branding setup." | tee -a "$LOG_FILE"
+    # This is likely a fatal error for the branding goals.
+    PATCH_FAILURES_LIST+=("setup-logo.sh not found")
+    # exit 1; # Or continue if some patching is still valuable. For now, continue and report.
 fi
-log_progress "LOGO_SETUP"
+log_progress "LOGO_FILE_SETUP"
+
 
 # Final summary
 END_TIME=$(date +%s)
 TOTAL_TIME=$((END_TIME - START_TIME))
-log_success "✅ All patches applied successfully in ${TOTAL_TIME} seconds!" | tee -a "$LOG_FILE"
 
-if [[ "$OS_TYPE_APPLY" == "windows" ]]; then
-    log_info "📊 Final disk usage of chromium/src: (Size check skipped on Windows for performance)" | tee -a "$LOG_FILE"
+log_info "" | tee -a "$LOG_FILE" # Spacer
+if [ ${#PATCH_FAILURES_LIST[@]} -eq 0 ]; then
+    log_success "✅ All patches and customization steps completed successfully in ${TOTAL_TIME} seconds!" | tee -a "$LOG_FILE"
 else
-    log_info "📊 Final disk usage of chromium/src: $(du -sh . | cut -f1)" | tee -a "$LOG_FILE"
+    log_warn "⚠️ Some patches or steps encountered issues. Total time: ${TOTAL_TIME} seconds." | tee -a "$LOG_FILE"
+    log_warn "   The following patches reported failures or issues:" | tee -a "$LOG_FILE"
+    for failure in "${PATCH_FAILURES_LIST[@]}"; do
+        log_warn "     - $failure" | tee -a "$LOG_FILE"
+    done
+    log_warn "   Please review the log file '$LOG_FILE' for details." | tee -a "$LOG_FILE"
+    log_warn "   The script continued where possible, but the build may not be as expected." | tee -a "$LOG_FILE"
 fi
 
-echo ""
-log_info "HenSurf customizations:"
-log_info "  ✅ AI features removed"
-log_info "  ✅ Google services disabled"
-log_info "  ✅ DuckDuckGo set as default search"
-log_info "  ✅ Crash reporting disabled"
-log_info "  ✅ Promotional content removed"
-log_info "  ✅ Custom branding applied"
-echo ""
+
+if [[ "$OS_TYPE_APPLY" == "windows" ]]; then
+    log_info "📊 Final disk usage of chromium/src: (Size check skipped on Windows for performance)." | tee -a "$LOG_FILE"
+else
+    log_info "📊 Final disk usage of chromium/src: $(du -sh . | cut -f1)." | tee -a "$LOG_FILE"
+fi
+
+log_info "" # Use log_info for consistent formatting, tee not needed for final stdout block
+log_info "HenSurf Browser - Customization Summary:"
+log_info "  - AI Features: Attempted removal (check warnings if any)"
+log_info "  - Logo Integration: Attempted (check warnings if any)"
+log_info "  - Branding Files: Copied"
+log_info "  - Build Configuration: Default 'args.gn' created/updated for 'out/HenSurf'"
+log_info "  - Default Search Engine: Set to DuckDuckGo (via C++ override)"
+log_info "  - Google API Keys: Disabled (via C++ override)"
+log_info "  - Promotional Content: Attempted removal"
+log_info "  - Crash Reporting: Disabled (via C++ override)"
+log_info "  - Version Info: Updated to 'HenSurf Browser' / 'HenSurf'"
+log_info "  - User Agent: Customized (via C++ override)"
+log_info "  - Logo Setup Script: Executed (if found)"
+log_info ""
+if [ ${#PATCH_FAILURES_LIST[@]} -ne 0 ]; then
+    log_warn "🔴 IMPORTANT: One or more patches failed to apply cleanly. Review messages above and the log file."
+fi
 log_info "📋 Detailed log saved to: $LOG_FILE"
-log_info "⏱️ Total time: ${TOTAL_TIME} seconds"
-log_info "Next step: Run ./scripts/build.sh to build HenSurf"
+log_info "⏱️ Total time for patch script: ${TOTAL_TIME} seconds."
+log_info "Next step: Run ./scripts/build.sh to build HenSurf Browser."

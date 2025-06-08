@@ -1,10 +1,16 @@
-name: 'Dependency review'
+name: 'Dependency Review' # Slightly more descriptive name
 on:
   pull_request:
     branches: [ "main" ]
+
+# Cancel in-progress runs for the same workflow and ref
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
-  contents: read
-  pull-requests: write
+  contents: read          # To read dependency files like package-lock.json, go.mod, etc.
+  pull-requests: write    # To add comments or checks to PRs
 
 jobs:
   dependency-review:

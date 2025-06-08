@@ -178,17 +178,20 @@ HenSurf/
 ├── scripts/               # Build and setup scripts
 │   ├── install-deps.sh    # Install build dependencies
 │   ├── fetch-chromium.sh  # Download Chromium source
-│   ├── apply-patches.sh   # Apply HenSurf customizations
-│   ├── setup-logo.sh      # Integrate HenSurf logo
+    ├── apply-patches.sh   # Apply HenSurf customizations (patches, code generation, calls setup-logo.sh)
+    ├── setup-logo.sh      # Sets up all logo icons and branding files
     ├── build.sh           # Core build script (can be parameterized)
     ├── interactive_build.sh # Recommended interactive build script
-│   └── test-hensurf.sh    # Test the built browser
+│   └── test-hensurf.sh    # Test the built browser (Bash)
+│   └── test-hensurf.ps1   # Test the built browser (PowerShell for Windows)
+│   └── run_all_tests.py   # Python script to orchestrate tests
 ├── patches/               # Source code modifications
 │   ├── remove-ai-features.patch
-│   ├── remove-bloatware.patch
+# Note: remove-bloatware.patch is often a conceptual goal achieved via multiple patches or GN flags
+# │   ├── remove-bloatware.patch
 │   └── integrate-logo.patch
-├── branding/              # HenSurf branding files
-│   ├── BRANDING           # Brand configuration
+├── branding/              # HenSurf branding assets
+│   ├── BRANDING           # Main branding configuration file (used by setup-logo.sh)
 │   └── icons/             # Generated browser icons
 │       ├── icon_16.png    # 16x16 favicon
 │       ├── icon_32.png    # 32x32 small icon
@@ -204,7 +207,8 @@ HenSurf/
 └── docs/                  # Documentation
     ├── ARCHITECTURE.md    # Technical architecture
     ├── DEVELOPMENT.md     # Development guide
-    └── PRIVACY.md         # Privacy policy
+    ├── PRIVACY.md         # Privacy policy
+    └── INDEX.md           # Index for docs (if used)
 ```
 
 ## Configuration
@@ -238,11 +242,8 @@ If you encounter issues while building or running HenSurf, here are some common 
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test the build (ON YOUR HARDWARE!)
-5. Submit a pull request
+Please see `CONTRIBUTING.md` for details on how to contribute to the HenSurf Browser project.
+We welcome bug reports, feature requests, and pull requests!
 
 ## License
 

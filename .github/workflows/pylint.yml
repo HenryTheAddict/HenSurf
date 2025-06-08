@@ -1,29 +1,51 @@
-name: Pylint
+name: Python Linters (Pylint, Bandit, Flake8)
 
-on: [push]
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '**.py'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**.py'
+
+# Cancel in-progress runs for the same workflow and ref
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  lint-python: # Renamed job for clarity
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # To checkout the repository
+      # No other permissions typically needed for linting
     strategy:
       matrix:
-        python-version: ["3.8", "3.9", "3.10"]
+        python-version: ["3.9", "3.10", "3.11"] # Updated Python versions
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
+        # Add caching for pip dependencies
+        cache: 'pip'
+        cache-dependency-path: '**/requirements*.txt' # Adjust if you have specific requirements files, otherwise pip cache works generally
+    - name: Install Python linters
       run: |
         python -m pip install --upgrade pip
         pip install pylint bandit flake8
-    - name: Analysing the code with pylint
+        # Consider adding specific versions if needed, e.g. pylint==2.15.0
+        # Or use a requirements-linters.txt file and `pip install -r requirements-linters.txt`
+    - name: Run Pylint
       run: |
         pylint $(git ls-files '*.py')
-    - name: Analysing the code with bandit
+    - name: Run Bandit (Security Linter)
       run: |
-        bandit -r . -f screen || true
-    - name: Analysing the code with flake8
+        bandit -r . -f screen --quiet || true # --quiet to reduce noise, || true to not fail job on findings
+    - name: Run Flake8 (Style Linter)
       run: |
-        flake8 . || true
+        flake8 . --count --show-source --statistics || true # Show source and stats, || true to not fail job

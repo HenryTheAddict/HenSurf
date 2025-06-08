@@ -276,7 +276,17 @@ def main():
     Orchestrates the test execution process based on command-line arguments.
     """
     desc = "Test Runner"
-    parser = argparse.ArgumentParser(description=desc)
+    desc = """Comprehensive Test Runner for HenSurf Browser.
+    This script can execute custom test scripts (shell/powershell)
+    and specific Chromium test suites like browser_tests and unit_tests.
+    It provides options to specify the platform, output directory,
+    and test filters. It also includes mockups for certain tools
+    if run in a sandboxed environment.
+    """
+    parser = argparse.ArgumentParser(
+        description=desc,
+        formatter_class=argparse.RawTextHelpFormatter
+    )
     parser.add_argument(
         '--platform', default=platform.system().lower(),
         choices=['linux', 'windows', 'darwin'],
@@ -313,14 +323,36 @@ def main():
         '--test-launcher-timeout', type=int, default=600,
         help="Timeout in seconds for test launcher commands."
     )
+    parser.add_argument(
+        '--list-tests', action='store_true',
+        help="Print a list of known test targets/suites and exit."
+    )
 
     args = parser.parse_args()
+
+    if args.list_tests:
+        print("Known test targets/suites for --build-chromium-tests and --run-chromium-tests:")
+        print("  - custom_scripts (handled by --skip-custom-scripts flag instead of these options)")
+        print("  - browser_tests")
+        print("  - unit_tests")
+        print("  - interactive_ui_tests")
+        print("  - components_unittests")
+        print("  - services_unittests")
+        print("  - content_unittests")
+        print("  - media_unittests")
+        print("  - views_unittests")
+        print("  - extensions_unittests")
+        print("  - (and many others available in a full Chromium checkout)")
+        print("\nUse specific suite names with --build-chromium-tests or --run-chromium-tests.")
+        print("For --run-chromium-tests, you can also specify a filter, e.g., browser_tests:BrowserTest.Sanity")
+        sys.exit(0)
+
     print(f"Running tests for platform: {args.platform}")
     print(f"Output directory: {args.output_dir}")
 
     # Get environment with mock tools in PATH (important for autoninja)
     mock_env = get_env_with_mock_tools()
-    print(f"Using PATH: {mock_env.get('PATH')}")  # noqa: E501 # pylint: disable=line-too-long
+    print(f"Using PATH: {mock_env.get('PATH')}")
 
     results = {}
     overall_success = True

@@ -75,8 +75,9 @@ case "$OS_TYPE" in
         log_info "      (System Settings -> Siri & Spotlight -> Spotlight Privacy... -> Add your checkout folder)"
         log_info "   2. Ensure the Xcode license agreement is accepted by running in your terminal:"
         log_info "      sudo xcodebuild -license accept"
-        log_info ""
+        # No log_info for the read prompt itself, as it's interactive.
         read -r -p "Press [Enter] to acknowledge these recommendations and continue..."
+        echo # Add a newline after the user presses Enter for better formatting
         ;;
 
     "windows")
@@ -159,8 +160,8 @@ case "$OS_TYPE" in
         log_info "   Recommended: Visual Studio 2019 (e.g., v16.11.14+) or Visual Studio 2022."
         log_info "   Chromium's gclient hooks may attempt to manage this if specific environment variables are set (e.g., DEPOT_TOOLS_WIN_TOOLCHAIN=0)."
         log_info "   If you have issues, ensure VS is correctly installed and discoverable by depot_tools."
-        log_info "   Press [Enter] to acknowledge and continue."
-        read -r
+        read -r -p "Press [Enter] to acknowledge and continue..."
+        echo # Add a newline after the user presses Enter
 
         log_info ""
         log_info "💡 Build Caching on Windows:"
@@ -168,7 +169,7 @@ case "$OS_TYPE" in
         log_info "   It can replace cl.exe and cache compilation results, similar to ccache on Linux/macOS."
         log_info "   Alternatively, investigate build caching features within Visual Studio itself."
         log_info "   Note: The ccache configurations in build.sh are primarily for Linux/macOS environments."
-        log_info ""
+        log_info "" # Ensure a blank line for readability before next section.
         ;;
 
     "linux")
@@ -250,19 +251,24 @@ if [ ! -d "$DEPOT_TOOLS_DIR" ]; then
     fi
 
     ORIGINAL_PWD=$(pwd)
-    log_info "Changing directory to $PARENT_OF_DEPOT_TOOLS for cloning depot_tools."
-    cd "$PARENT_OF_DEPOT_TOOLS"
-    if git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git; then
-        log_success "✅ Successfully cloned depot_tools into $DEPOT_TOOLS_DIR"
+    log_info "   Attempting to clone depot_tools into '$PARENT_OF_DEPOT_TOOLS'..."
+    # Using safe_cd for directory changes
+    if safe_cd "$PARENT_OF_DEPOT_TOOLS"; then
+        if git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git; then
+            log_success "✅ Successfully cloned depot_tools into '$DEPOT_TOOLS_DIR'."
+        else
+            log_error "❌ Failed to clone depot_tools. Please check your internet connection and Git setup."
+            safe_cd "$ORIGINAL_PWD" # Go back to original dir before exiting
+            exit 1
+        fi
+        safe_cd "$ORIGINAL_PWD" # Return to the original directory
     else
-        log_error "❌ Failed to clone depot_tools. Please check your internet connection and Git setup."
-        cd "$ORIGINAL_PWD" # Go back to original dir before exiting
+        # safe_cd would have already logged an error.
+        log_error "❌ Could not change to directory '$PARENT_OF_DEPOT_TOOLS' to clone depot_tools. Please check permissions and path."
         exit 1
     fi
-    log_info "Changing directory back to $ORIGINAL_PWD."
-    cd "$ORIGINAL_PWD"
 else
-    log_success "✅ depot_tools already exists at $DEPOT_TOOLS_DIR"
+    log_success "✅ depot_tools already exists at '$DEPOT_TOOLS_DIR'."
 fi
 
 # Add depot_tools to PATH
@@ -275,25 +281,27 @@ fi
 if [[ "$OS_TYPE" == "windows" ]]; then
     log_info "   (Note: This PATH change is only for the current Git Bash/MSYS session.)"
     log_success "✅ All core dependencies checked for Windows!"
+    log_info "   (Note: The PATH change for depot_tools is only for the current Git Bash/MSYS session.)"
 else
-    log_info "   (Note: This PATH change is only for the current terminal session.)"
     log_success "✅ All core dependencies installed/checked and depot_tools configured for this session!"
+    log_info "   (Note: The PATH change for depot_tools is only for the current terminal session.)"
 fi
 
 log_info ""
-log_info "Next steps:"
+log_info "--- Next Steps ---"
 if [[ "$OS_TYPE" == "windows" ]]; then
-    log_info "1. IMPORTANT: Add depot_tools to your Windows PATH environment variable permanently if you haven't already."
-    log_info "   You can do this through 'Environment Variables' settings in Windows, or by using 'setx' command in cmd.exe (e.g., setx PATH \"%PATH%;C:\\path\\to\\depot_tools\")."
-    log_info "   Replace C:\\path\\to\\depot_tools with the actual path: $DEPOT_TOOLS_DIR"
-    log_info "   Restart your Git Bash/MSYS terminal after making permanent changes."
+    log_info "1. IMPORTANT: Add depot_tools to your Windows System PATH environment variable permanently if you haven't already."
+    log_info "   You can do this through 'System Properties' > 'Environment Variables', or by using 'setx PATH \"%PATH%;C:\\path\\to\\depot_tools\"' in cmd.exe (run as admin for system-wide effect)."
+    log_info "   Replace 'C:\\path\\to\\depot_tools' with the actual absolute path: $DEPOT_TOOLS_DIR"
+    log_info "   Restart your Git Bash/MSYS terminal and Command Prompt/PowerShell after making permanent changes for them to take effect."
 else
-    log_info "1. IMPORTANT: Add depot_tools to your shell's startup file (e.g., ~/.bashrc, ~/.zshrc) if you haven't already:"
-    log_info "   echo 'export PATH=\"$DEPOT_TOOLS_DIR:\$PATH\"' >> ~/.your_shell_rc_file"
-    log_info "   Then, source the file (e.g., source ~/.bashrc) or open a new terminal."
+    log_info "1. IMPORTANT: Add depot_tools to your shell's startup file (e.g., ~/.bashrc, ~/.zshrc, ~/.profile) if you haven't already:"
+    log_info "   Example command: echo 'export PATH=\"$DEPOT_TOOLS_DIR:\$PATH\"' >> ~/.your_shell_rc_file"
+    log_info "   Replace '.your_shell_rc_file' with the actual file for your shell (e.g., ~/.bashrc)."
+    log_info "   Then, source the file (e.g., 'source ~/.bashrc') or open a new terminal."
 fi
-log_info "2. Run ./scripts/fetch-chromium.sh to download Chromium source (will use depot_tools from PATH)."
-log_info "3. Run ./scripts/apply-patches.sh to apply HenSurf customizations."
-log_info "4. Run ./scripts/build.sh to build HenSurf."
+log_info "2. Run './scripts/fetch-chromium.sh' to download Chromium source (it will use depot_tools from the PATH)."
+log_info "3. Run './scripts/apply-patches.sh' to apply HenSurf customizations."
+log_info "4. Run './scripts/build.sh' to build HenSurf."
 log_info ""
-log_warn "⚠️  Note: The full Chromium build process requires significant disk space (~100GB) and can take several hours."
+log_warn "⚠️ Note: The full Chromium build process requires significant disk space (~100GB) and can take several hours."

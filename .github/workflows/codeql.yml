@@ -8,14 +8,19 @@ on:
   schedule:
     - cron: '0 0 * * *'
 
+# Cancel in-progress runs for the same workflow and ref
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
     permissions:
-      actions: read
-      contents: read
-      security-events: write
+      actions: read      # Required for actions like checkout
+      contents: read     # Required to read repository content
+      security-events: write # Required to upload CodeQL analysis results
 
     env:
       DEPOT_TOOLS_DIR: ${{ github.workspace }}/depot_tools
@@ -24,11 +29,21 @@ jobs:
     - name: Checkout HenSurf repository
       uses: actions/checkout@v4
       with:
-        path: hensurf
+        path: hensurf # Checkout HenSurf specific code into a 'hensurf' subdirectory
+
+    - name: Cache depot_tools
+      id: cache-depot-tools
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.DEPOT_TOOLS_DIR }}
+        key: ${{ runner.os }}-depot-tools-${{ hashFiles('**/DEPS') }} # Key based on DEPS or fixed if not versioning depot_tools
 
     - name: Install depot_tools
+      if: steps.cache-depot-tools.outputs.cache-hit != 'true'
       run: |
         git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git ${{ env.DEPOT_TOOLS_DIR }}
+    - name: Add depot_tools to PATH
+      run: |
         echo "${{ env.DEPOT_TOOLS_DIR }}" >> $GITHUB_PATH
 
     - name: Fetch pinned Chromium version

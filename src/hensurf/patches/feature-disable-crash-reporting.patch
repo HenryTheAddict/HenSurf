@@ -1,0 +1,26 @@
+--- a/components/crash/core/common/crash_key.cc
++++ b/components/crash/core/common/crash_key.cc
+@@ -1,15 +1,12 @@
+-// Copyright 2020 The Chromium Authors
++// Copyright 2020 The Chromium Authors. Modified by HenSurf.
+ // Use of this source code is governed by a BSD-style license that can be
+ // found in the LICENSE file.
+
+ #include "components/crash/core/common/crash_key.h"
+-
+-#include "base/debug/crash_logging.h"
+-
+-namespace crash_keys {
+-
+-void SetCrashKeyValue(const base::StringPiece& key,
+-                      const base::StringPiece& value) {
+-  base::debug::SetCrashKeyValue(key, value);
+-}
+-}  // namespace crash_keys
++// HenSurf - Disable crash reporting
++
++namespace crash_keys {
++void SetCrashKeyValue(const std::string& key, const std::string& value) {}
++void ClearCrashKey(const std::string& key) {}
++void SetCrashKeyToInt(const std::string& key, int value) {}
++}  // namespace crash_keys

@@ -1,0 +1,26 @@
+--- a/components/version_info/BUILD.gn
++++ b/components/version_info/BUILD.gn
+@@ -38,6 +38,7 @@ static_library("version_info") {
+   sources = [
+     "channel.cc",
+     "channel.h",
++    "hensurf_version_info.cc", # Added by HenSurf
+     "version_info.cc",
+     "version_info.h",
+     "version_info_values.cc", # Keep this if it exists, or adjust context
+--- /dev/null
++++ b/components/version_info/hensurf_version_info.cc
+@@ -0,0 +1,12 @@
++// Copyright 2025 HenSurf. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "components/version_info/version_info.h"
++
++namespace version_info {
++
++std::string GetProductName() { return "HenSurf"; }
++
++std::string GetProductNameAndVersionForUserAgent() { return "HenSurf/1.0"; }
++
++}  // namespace version_info

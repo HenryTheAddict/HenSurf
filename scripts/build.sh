@@ -20,17 +20,49 @@ if [ ! -f "chromium/src/out/HenSurf/args.gn" ]; then
 fi
 
 # Add depot_tools to PATH
-export PATH="$PWD/../depot_tools:$PATH"
+# Corrected path: install-deps.sh places depot_tools alongside the project root (e.g. ../depot_tools if project is HenSurf)
+# This script cds into chromium/src, so from there, depot_tools is ../../depot_tools
 
 cd chromium/src
+
+# IMPORTANT: Set path to depot_tools, assuming it's two levels up from chromium/src
+# e.g. if project is /path/to/HenSurf, depot_tools is /path/to/depot_tools
+# and current dir is /path/to/HenSurf/chromium/src
+export PATH="$PWD/../../depot_tools:$PATH"
+
 
 # Check system requirements
 echo "🔍 Checking system requirements..."
 
-# Check available memory (recommend 16GB+)
-MEMORY_GB=$(sysctl -n hw.memsize | awk '{print int($1/1024/1024/1024)}')
+MEMORY_GB=0
+CPU_CORES=1 # Default to 1 core if detection fails
+
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    echo "🍏 Checking macOS system requirements..."
+    MEMORY_GB=$(sysctl -n hw.memsize | awk '{print int($1/1024/1024/1024)}')
+    CPU_CORES=$(sysctl -n hw.ncpu)
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    echo "🐧 Checking Linux system requirements..."
+    if [ -f /proc/meminfo ]; then
+        MEMORY_GB=$(grep MemTotal /proc/meminfo | awk '{print int($2/1024/1024)}')
+    else
+        echo "⚠️ Could not read /proc/meminfo to determine system memory."
+    fi
+    if command -v nproc &> /dev/null; then
+        CPU_CORES=$(nproc)
+    else
+        echo "⚠️ nproc command not found, defaulting to 1 CPU core for estimates."
+    fi
+else
+    echo "⚠️ Unsupported OS ($OSTYPE) for detailed system checks. Proceeding with default assumptions (0GB RAM, 1 CPU core)."
+fi
+
 if [ "$MEMORY_GB" -lt 16 ]; then
-    echo "⚠️  Warning: Only ${MEMORY_GB}GB RAM detected. 16GB+ recommended for building."
+    if [ "$MEMORY_GB" -gt 0 ]; then # Only warn if we got a valid reading
+        echo "⚠️  Warning: Only ${MEMORY_GB}GB RAM detected. 16GB+ recommended for building."
+    else
+        echo "⚠️  Warning: Could not determine system RAM. 16GB+ recommended for building."
+    fi
     read -p "Continue anyway? (y/N): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -38,8 +70,8 @@ if [ "$MEMORY_GB" -lt 16 ]; then
     fi
 fi
 
-# Check available disk space
-AVAILABLE_SPACE=$(df -h . | awk 'NR==2 {print $4}' | sed 's/G//')
+# Check available disk space (seems OS-agnostic enough)
+AVAILABLE_SPACE=$(df -h . | awk 'NR==2 {print $4}' | sed 's/[^0-9.]//g') # More robust sed
 if [ "$AVAILABLE_SPACE" -lt 50 ]; then
     echo "⚠️  Warning: Less than 50GB available. Build requires ~50GB additional space."
     read -p "Continue anyway? (y/N): " -n 1 -r
@@ -63,7 +95,7 @@ echo "📋 Build configuration:"
 gn args out/HenSurf --list --short
 
 # Estimate build time
-CPU_CORES=$(sysctl -n hw.ncpu)
+# CPU_CORES is now determined OS-specifically above
 ESTIMATED_HOURS=$((8 / CPU_CORES))
 if [ "$ESTIMATED_HOURS" -lt 1 ]; then
     ESTIMATED_HOURS=1
@@ -96,46 +128,72 @@ fi
 echo "🔨 Building additional components..."
 autoninja -C out/HenSurf chromedriver 2>&1 | tee -a out/HenSurf/build.log
 
-# Create application bundle for macOS
-echo "📦 Creating macOS application bundle..."
-if [ -d "out/HenSurf/HenSurf.app" ]; then
-    rm -rf out/HenSurf/HenSurf.app
-fi
+# Create application bundle for macOS (and build macOS installer)
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    echo "📦 Creating macOS application bundle..."
+    if [ -d "out/HenSurf/HenSurf.app" ]; then
+        rm -rf out/HenSurf/HenSurf.app
+    fi
 
-# Copy and rename the Chrome app bundle
-cp -R out/HenSurf/Chromium.app out/HenSurf/HenSurf.app 2>/dev/null || \
-cp -R out/HenSurf/Google\ Chrome.app out/HenSurf/HenSurf.app 2>/dev/null || \
-cp -R out/HenSurf/Chrome.app out/HenSurf/HenSurf.app 2>/dev/null || true
+    # Copy and rename the Chrome app bundle
+    # Try common names for the output app bundle from Chromium build
+    CHROME_APP_NAMES=( "Chromium.app" "Google Chrome.app" "Chrome.app" )
+    APP_COPIED=false
+    for app_name in "${CHROME_APP_NAMES[@]}"; do
+        if [ -d "out/HenSurf/${app_name}" ]; then
+            echo "Found ${app_name}, copying to HenSurf.app..."
+            cp -R "out/HenSurf/${app_name}" "out/HenSurf/HenSurf.app"
+            APP_COPIED=true
+            break
+        fi
+    done
 
-if [ -d "out/HenSurf/HenSurf.app" ]; then
-    # Update Info.plist
-    /usr/libexec/PlistBuddy -c "Set :CFBundleName HenSurf" out/HenSurf/HenSurf.app/Contents/Info.plist 2>/dev/null || true
-    /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName HenSurf Browser" out/HenSurf/HenSurf.app/Contents/Info.plist 2>/dev/null || true
-    /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.hensurf.browser" out/HenSurf/HenSurf.app/Contents/Info.plist 2>/dev/null || true
-    
-    echo "✅ HenSurf.app created successfully!"
-else
-    echo "⚠️  Could not create app bundle, but binary should be available"
-fi
+    if [ "$APP_COPIED" = true ] && [ -d "out/HenSurf/HenSurf.app" ]; then
+        # Update Info.plist
+        PLIST_BUDDY="/usr/libexec/PlistBuddy"
+        INFO_PLIST="out/HenSurf/HenSurf.app/Contents/Info.plist"
+        if [ -f "$PLIST_BUDDY" ] && [ -f "$INFO_PLIST" ]; then
+            "$PLIST_BUDDY" -c "Set :CFBundleName HenSurf" "$INFO_PLIST" 2>/dev/null || echo "Warning: Failed to set CFBundleName"
+            "$PLIST_BUDDY" -c "Set :CFBundleDisplayName HenSurf Browser" "$INFO_PLIST" 2>/dev/null || echo "Warning: Failed to set CFBundleDisplayName"
+            "$PLIST_BUDDY" -c "Set :CFBundleIdentifier com.hensurf.browser" "$INFO_PLIST" 2>/dev/null || echo "Warning: Failed to set CFBundleIdentifier"
+            echo "✅ HenSurf.app created and configured successfully!"
+        else
+            echo "⚠️  PlistBuddy or Info.plist not found. Cannot customize app bundle."
+        fi
+    else
+        echo "⚠️  Could not find a base Chrome app bundle (Chromium.app, Google Chrome.app, or Chrome.app) in out/HenSurf/ to create HenSurf.app."
+        echo "   The raw 'chrome' binary should still be available."
+    fi
 
-# Build installer (optional)
-echo "📦 Building installer..."
-autoninja -C out/HenSurf chrome/installer/mac 2>&1 | tee -a out/HenSurf/build.log || true
+    # Build macOS installer (optional)
+    echo "📦 Building macOS installer (dmg)..."
+    autoninja -C out/HenSurf mini_installer 2>&1 | tee -a out/HenSurf/build.log || echo "ℹ️  macOS installer build step finished (may have warnings or be skipped)."
+
+fi # End of macOS specific bundling
 
 echo ""
 echo "🎉 HenSurf build completed successfully!"
 echo ""
-echo "📍 Build artifacts location:"
-echo "   Binary: chromium/src/out/HenSurf/chrome"
-if [ -d "out/HenSurf/HenSurf.app" ]; then
-    echo "   App Bundle: chromium/src/out/HenSurf/HenSurf.app"
+echo "📍 Build artifacts location (relative to chromium/src):"
+echo "   Main executable: out/HenSurf/chrome"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    if [ -d "out/HenSurf/HenSurf.app" ]; then
+        echo "   macOS App Bundle: out/HenSurf/HenSurf.app"
+    fi
+    if [ -f "out/HenSurf/HenSurf.dmg" ]; then # Assuming mini_installer produces HenSurf.dmg
+        echo "   macOS Installer:  out/HenSurf/HenSurf.dmg"
+    fi
 fi
-echo "   Build log: chromium/src/out/HenSurf/build.log"
+echo "   Build log: out/HenSurf/build.log"
 echo ""
-echo "🚀 To run HenSurf:"
-if [ -d "out/HenSurf/HenSurf.app" ]; then
-    echo "   open out/HenSurf/HenSurf.app"
-else
+echo "🚀 To run HenSurf (from chromium/src directory):"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    if [ -d "out/HenSurf/HenSurf.app" ]; then
+        echo "   open out/HenSurf/HenSurf.app"
+    else
+        echo "   ./out/HenSurf/chrome  (App bundle creation failed or was skipped)"
+    fi
+else # For Linux and other OSes
     echo "   ./out/HenSurf/chrome"
 fi
 echo ""

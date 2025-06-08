@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
 #
-# HenSurf Browser - Advanced Patcher
+# HenSurf Browser - Production Patcher & Build Tool
 #
 # Description:
-#   An idempotent and robust tool to customize the Chromium source code.
-#   It applies and reverts patches, manages branding assets, and configures the
-#   build environment. Supports command-line flags for flexible execution.
+#   A comprehensive, idempotent tool to customize the Chromium source code.
+#   It applies/reverts patches, stages/deploys branding assets, and configures
+#   the build environment. Includes flags for granular control over its behavior.
 #
 # Usage: ./apply-patches.sh [OPTIONS]
 # See --help for more details.
@@ -31,6 +31,7 @@ readonly SETUP_LOGO_SCRIPT="${PROJECT_ROOT}/scripts/setup-logo.sh"
 REVERT_PATCHES=false
 FORCE_APPLY=false
 SKIP_DEPS_CHECK=false
+SKIP_ASSET_STAGING=false
 NO_COLOR=false
 
 # --- TUI & Logging Setup ---
@@ -97,10 +98,10 @@ _log_progress() {
 
 usage() {
 cat << EOF
-${_C_BOLD}HenSurf Browser - Advanced Patcher${_C_RESET}
+${_C_BOLD}HenSurf Browser - Production Patcher & Build Tool${_C_RESET}
 
 ${_C_YELLOW}Description:${_C_RESET}
-  This script automates the customization of the Chromium source tree. It can apply
+  This script automates the full customization of the Chromium source tree. It can apply
   and revert patches, deploy branding assets, and set up the build environment.
 
 ${_C_YELLOW}Usage:${_C_RESET}
@@ -111,16 +112,17 @@ ${_C_YELLOW}Options:${_C_RESET}
       Show this help message and exit.
 
   ${_C_GREEN}-r, --revert${_C_RESET}
-      Attempt to revert all patches before performing any other actions. This is useful
-      for ensuring a clean state before applying new patches.
+      Revert all patches before applying them again. Ensures a clean, predictable state.
 
   ${_C_GREEN}-f, --force-apply${_C_RESET}
-      Force patch application even if a dry-run indicates it might already be applied.
-      Use with caution, as this can corrupt source files.
+      Force patch application even if a dry-run fails. Use with caution.
 
   ${_C_GREEN}-s, --skip-deps-check${_C_RESET}
-      Skip the initial dependency checks (e.g., for 'patch', 'rsync'). For advanced
-      users who are confident in their environment setup.
+      Skip initial dependency checks ('patch', 'rsync'). For advanced users.
+
+  ${_C_GREEN}    --skip-asset-staging, --no-fetch${_C_RESET}
+      Skip the asset staging step (running 'setup-logo.sh'). Use if assets are
+      already prepared or if you only need to manage patches.
       
   ${_C_GREEN}    --no-color${_C_RESET}
       Disable colored output.
@@ -153,11 +155,32 @@ preflight_checks() {
     _log 'SUCCESS' "Pre-flight checks passed."
 }
 
+stage_branding_assets() {
+    if [ "${SKIP_ASSET_STAGING}" = true ]; then
+        _log 'WARN' "Skipping asset staging as requested by --skip-asset-staging."
+        return
+    fi
+    
+    _log 'INFO' "Staging branding assets by executing 'setup-logo.sh'..."
+    if [ ! -f "${SETUP_LOGO_SCRIPT}" ]; then
+        _log 'ERROR' "'setup-logo.sh' not found. Cannot stage branding assets."
+        FAILURE_LIST+=("  - ${_C_RED}setup-logo.sh${_C_RESET}: Script not found.")
+        return
+    fi
+
+    chmod +x "${SETUP_LOGO_SCRIPT}"
+    if (cd "${PROJECT_ROOT}" && "${SETUP_LOGO_SCRIPT}" >> "${LOG_FILE}" 2>&1); then
+        _log 'SUCCESS' "'setup-logo.sh' executed successfully."
+    else
+        _log 'WARN' "'setup-logo.sh' reported errors. Staged assets may be incomplete."
+        FAILURE_LIST+=("  - ${_C_YELLOW}setup-logo.sh${_C_RESET}: Execution reported errors.")
+    fi
+}
+
 manage_patches() {
     _log 'INFO' "Entering patch management..."
     safe_cd "${CHROMIUM_SRC_DIR}"
 
-    # An indexed array is used to preserve order for reverting.
     local patches_to_apply=(
         "integrate-logo.patch|Logo Integration"
         "feature-default-search-engine.patch|Default Search Engine"
@@ -169,18 +192,14 @@ manage_patches() {
 
     if [ "${REVERT_PATCHES}" = true ]; then
         _log 'INFO' "Reverting patches as requested..."
-        # Iterate backwards to revert patches in the reverse order of application.
         for (( i=${#patches_to_apply[@]}-1; i>=0; i-- )); do
             local patch_info="${patches_to_apply[$i]}"
-            local patch_file="${patch_info%|*}"
             local description="${patch_info#*|}"
-            local full_path="${PATCHES_DIR}/${patch_file}"
             
-            _log 'INFO' "--> Reverting patch: '${description}'"
-            if patch -p1 --reverse < "${full_path}" >> "${LOG_FILE}" 2>&1; then
-                _log 'SUCCESS' "    '${description}' reverted successfully."
+            if patch -p1 --reverse < "${PATCHES_DIR}/${patch_info%|*}" >> "${LOG_FILE}" 2>&1; then
+                _log 'SUCCESS' "--> Reverted: '${description}'"
             else
-                _log 'WARN' "    Reverting '${description}' failed. It may not have been applied. Continuing."
+                _log 'WARN' "--> Reverting '${description}' failed. It may not have been applied."
             fi
         done
         _log 'SUCCESS' "Patch reversion phase complete."
@@ -188,66 +207,96 @@ manage_patches() {
 
     _log 'INFO' "Applying patches..."
     for patch_info in "${patches_to_apply[@]}"; do
-        local patch_file="${patch_info%|*}"
         local description="${patch_info#*|}"
-        local full_path="${PATCHES_DIR}/${patch_file}"
+        local full_path="${PATCHES_DIR}/${patch_info%|*}"
 
-        _log 'INFO' "--> Processing patch: '${description}'"
-
-        # Dry run first to see if it's already applied.
         if patch -p1 --forward --dry-run < "${full_path}" >/dev/null 2>&1; then
-            # Dry run succeeded, so apply for real.
             if patch -p1 --forward < "${full_path}" >> "${LOG_FILE}" 2>&1; then
-                _log 'SUCCESS' "    '${description}' applied successfully."
+                _log 'SUCCESS' "--> Applied: '${description}'"
             else
-                _log 'ERROR' "    Patch '${description}' failed unexpectedly after a successful dry run."
+                _log 'ERROR' "Patch '${description}' failed unexpectedly after a successful dry run."
                 FAILURE_LIST+=("  - ${_C_RED}${description}${_C_RESET}: Failed on application.")
             fi
         else
-            # Dry run failed. Exit code 1 means it's likely applied/has conflicts.
             if [ $? -eq 1 ]; then
-                if [ "${FORCE_APPLY}" = true ]; then
-                    _log 'WARN' "    Dry run failed for '${description}', but forcing application..."
+                 if [ "${FORCE_APPLY}" = true ]; then
+                    _log 'WARN' "Dry run failed for '${description}', but forcing application..."
                     if patch -p1 --forward < "${full_path}" >> "${LOG_FILE}" 2>&1; then
-                        _log 'SUCCESS' "    '${description}' force-applied successfully."
+                        _log 'SUCCESS' "--> Force-Applied: '${description}'"
                     else
-                        _log 'ERROR' "    Force-application of '${description}' failed."
+                        _log 'ERROR' "Force-application of '${description}' failed."
                         FAILURE_LIST+=("  - ${_C_RED}${description}${_C_RESET}: Failed on force-application.")
                     fi
                 else
-                    _log 'WARN' "    Skipping '${description}' (already applied or has conflicts). Use --force-apply to override."
+                    _log 'WARN' "--> Skipping '${description}' (already applied or has conflicts)."
                 fi
             else
-                _log 'ERROR' "   Dry run for '${description}' failed with a critical error."
+                _log 'ERROR' "Dry run for '${description}' failed with a critical error."
                 FAILURE_LIST+=("  - ${_C_RED}${description}${_C_RESET}: Critical patch error.")
             fi
         fi
     done
 }
 
+configure_build_environment() {
+    _log 'INFO' "Creating default build configuration..."
+    mkdir -p "${CHROMIUM_SRC_DIR}/out/HenSurf"
+    cp "${HENSURF_CONFIG_DIR}/hensurf.gn" "${CHROMIUM_SRC_DIR}/out/HenSurf/args.gn"
+    _log 'SUCCESS' "Default build configuration created at out/HenSurf/args.gn."
+}
+
+remove_unwanted_content() {
+    _log 'INFO' "Removing promotional and welcome files..."
+    find "${CHROMIUM_SRC_DIR}/chrome/browser/ui" -name "*promo*" -type f -delete >> "${LOG_FILE}" 2>&1 || true
+    find "${CHROMIUM_SRC_DIR}/chrome/browser/ui" -name "*welcome*" -type f -delete >> "${LOG_FILE}" 2>&1 || true
+    _log 'SUCCESS' "Content removal attempt finished."
+}
+
+deploy_assets() {
+    _log 'INFO' "Deploying staged branding assets to Chromium source..."
+    if [ ! -d "${STAGED_ASSETS_DIR}" ]; then
+        _log 'WARN' "Staged assets directory not found at '${STAGED_ASSETS_DIR}'. Skipping deployment."
+        FAILURE_LIST+=("  - ${_C_YELLOW}Asset Deployment${_C_RESET}: Staged assets directory missing.")
+        return
+    fi
+
+    if command_exists "rsync"; then
+        rsync -a --relative "${STAGED_ASSETS_DIR}/./" "${CHROMIUM_SRC_DIR}"
+        _log 'SUCCESS' "Branding assets deployed successfully using rsync."
+    else
+        _log 'WARN' "Using 'cp' fallback for asset deployment."
+        (cd "${STAGED_ASSETS_DIR}" && find . -type f -exec cp --parents -v {} "${CHROMIUM_SRC_DIR}" \;) >> "${LOG_FILE}" 2>&1
+        _log 'SUCCESS' "Branding assets deployed using cp."
+    fi
+}
 
 # --- Main Execution Function ---
 main() {
-    # Clear log file from previous runs
-    true > "${LOG_FILE}"
+    true > "${LOG_FILE}" # Clear log file
     _log 'INFO' "Starting HenSurf Patcher. Log file: ${LOG_FILE}"
 
     preflight_checks
     _log_progress "PRE-FLIGHT CHECKS"
     
-    # The original script had asset staging here. If it's a separate concern,
-    # it can be added back as a function call. For now, we focus on patching.
+    stage_branding_assets
+    _log_progress "ASSET STAGING"
+
+    safe_cd "${CHROMIUM_SRC_DIR}"
+    
+    configure_build_environment
+    _log_progress "BUILD CONFIGURATION"
     
     manage_patches
     _log_progress "PATCH MANAGEMENT"
 
-    # Other functions from the original script can be added here as needed,
-    # for example, for configuring the build environment or deploying assets
-    # after the patching is complete.
+    remove_unwanted_content
+    _log_progress "CONTENT REMOVAL"
+
+    deploy_assets
+    _log_progress "ASSET DEPLOYMENT"
 }
 
 # --- Script Entry Point ---
-
 # Parse Command-Line Arguments
 if [[ $# -gt 0 ]]; then
     while [[ $# -gt 0 ]]; do
@@ -256,6 +305,7 @@ if [[ $# -gt 0 ]]; then
             -r|--revert)            REVERT_PATCHES=true; shift ;;
             -f|--force-apply)       FORCE_APPLY=true; shift ;;
             -s|--skip-deps-check)   SKIP_DEPS_CHECK=true; shift ;;
+            --skip-asset-staging|--no-fetch) SKIP_ASSET_STAGING=true; shift ;;
             --no-color)             NO_COLOR=true; shift ;;
             *)
                 echo -e "${_C_RED}Unknown option: $1${_C_RESET}"
@@ -265,5 +315,4 @@ if [[ $# -gt 0 ]]; then
     done
 fi
 
-# Execute the main logic. The 'trap' will handle the final summary.
-main
+main "$@"

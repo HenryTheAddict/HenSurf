@@ -60,7 +60,7 @@ Building Chromium (and thus HenSurf) on Windows has specific prerequisites and r
         # Note: Verify the exact package names and parameters if issues arise.
         ```
     *   Close and reopen Git Bash after installing tools to ensure PATH changes take effect.
-*   **Disk Space:** At least **150GB** of free disk space on an NTFS-formatted drive.
+*   **Disk Space:** At least **150GB** of free disk space on an NTFS-formatted drive. It is not 1995 dont use FAT32.
 *   **RAM:** **16GB+** highly recommended (32GB+ for a significantly better experience).
 
 **Build Steps:**
@@ -90,7 +90,7 @@ Building Chromium (and thus HenSurf) on Windows has specific prerequisites and r
     ```bash
     ./scripts/build.sh
     ```
-    This compiles the browser. This is also a very lengthy process (can take multiple hours depending on your CPU and RAM).
+    This compiles the browser. This is also a very very very lengthy process (can take multiple hours, or even hundreds! depending on your CPU and RAM. Please have more then 16GB!).
 
 **Running HenSurf on Windows:**
 
@@ -136,9 +136,9 @@ The following steps are a general guide. Windows users, please refer to the "Bui
 
 ```
 HenSurf/
-├── README.md              # This file
+├── README.md              # This file, hello btw!
 ├── LICENSE                # BSD 3-Clause License
-├── Hensurf.png            # HenSurf logo (source)
+├── Hensurf.png            # HenSurf's logo!
 ├── scripts/               # Build and setup scripts
 │   ├── install-deps.sh    # Install build dependencies
 │   ├── fetch-chromium.sh  # Download Chromium source
@@ -198,7 +198,7 @@ If you encounter issues while building or running HenSurf, here are some common 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Test the build
+4. Test the build (ON YOUR HARDWARE!)
 5. Submit a pull request
 
 ## License

@@ -1,0 +1,10 @@
+--- a/chrome/VERSION
++++ b/chrome/VERSION
+@@ -3,5 +3,5 @@
+ MINOR=0
+ BUILD=6099 # Placeholder - actual value from file should be preserved if possible
+ PATCH=1   # Placeholder - actual value from file should be preserved if possible
+-PRODUCT_FULLNAME=Chromium
+-PRODUCT_SHORTNAME=Chromium
++PRODUCT_FULLNAME=HenSurf Browser
++PRODUCT_SHORTNAME=HenSurf

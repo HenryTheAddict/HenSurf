@@ -1,0 +1,38 @@
+--- a/components/search_engines/BUILD.gn
++++ b/components/search_engines/BUILD.gn
+@@ -123,6 +123,7 @@ static_library("search_engines") {
+     "search_engine_choice_utils.h",
+     "search_engine_type.h",
+     "search_engines_pref_names.h",
++    "hensurf_engines.cc", # Added by HenSurf
+     "template_url.cc",
+     "template_url.h",
+     "template_url_data.cc",
+
+--- /dev/null
++++ b/components/search_engines/hensurf_engines.cc
+@@ -0,0 +1,23 @@
++// HenSurf custom search engines
++#include "components/search_engines/search_engines_pref_names.h"
++#include "components/search_engines/template_url_prepopulate_data.h"
++
++namespace TemplateURLPrepopulateData {
++
++// DuckDuckGo search engine for HenSurf
++const PrepopulatedEngine duckduckgo = {
++  L"DuckDuckGo",
++  L"duckduckgo.com",
++  "https://duckduckgo.com/favicon.ico",
++  "https://duckduckgo.com/?q={searchTerms}",
++  nullptr,  // No suggestions URL for privacy
++  nullptr,
++  nullptr,
++  nullptr,
++  nullptr,
++  nullptr,
++  nullptr,
++  SEARCH_ENGINE_DUCKDUCKGO, // Assumes this enum exists or is added elsewhere
++  1,  // ID - ensure uniqueness or proper handling
++};
++
++}  // namespace TemplateURLPrepopulateData

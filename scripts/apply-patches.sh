@@ -115,28 +115,7 @@ safe_cd "$CHROMIUM_SRC_DIR" # Using safe_cd from utils.sh
 
 log_info "📋 Starting patch application..." | tee -a "$LOG_FILE"
 
-# Apply main AI removal patch
-log_info "🤖 Applying 'remove-ai-features.patch'..." | tee -a "$LOG_FILE"
-# Attempt to apply the patch.
-if patch -p1 --forward < "$PROJECT_ROOT/src/hensurf/patches/remove-ai-features.patch" 2>&1 | tee -a "$LOG_FILE"; then
-    log_success "✅ 'remove-ai-features.patch' applied successfully." | tee -a "$LOG_FILE"
-else
-    # Store exit code of the patch command
-    PATCH_STATUS=$?
-    if [ $PATCH_STATUS -eq 1 ]; then # Exit code 1 typically means conflicts or already applied
-        log_warn "⚠️ 'remove-ai-features.patch' failed to apply cleanly (exit code $PATCH_STATUS). It might be partially applied, already applied, or have conflicts. Continuing script." | tee -a "$LOG_FILE"
-        # Optionally, try to reverse it if it's partially applied and that's desired.
-        # For now, we just warn and continue.
-        # patch -p1 -R < "$PROJECT_ROOT/patches/remove-ai-features.patch" > /dev/null 2>&1 || true
-        PATCH_FAILURES_LIST+=("remove-ai-features.patch (conflicts/already applied)")
-    else # Other non-zero exit codes
-        log_warn "❌ 'remove-ai-features.patch' failed with unexpected exit code $PATCH_STATUS. Continuing script." | tee -a "$LOG_FILE"
-        PATCH_FAILURES_LIST+=("remove-ai-features.patch (error code $PATCH_STATUS)")
-    fi
-fi
-log_progress "AI_REMOVAL"
-
-log_info "ℹ️ Bloatware removal via patch is currently disabled. Feature is controlled by HENSURF_ENABLE_BLOATWARE GN arg." | tee -a "$LOG_FILE"
+log_info "ℹ️ Bloatware removal is controlled by the HENSURF_DISABLE_BLOATWARE GN arg in src/hensurf/config/hensurf.gn." | tee -a "$LOG_FILE"
 
 # Apply logo integration patch
 log_info "🎨 Applying 'integrate-logo.patch'..." | tee -a "$LOG_FILE"
@@ -168,57 +147,27 @@ cp "$PROJECT_ROOT/src/hensurf/config/hensurf.gn" out/HenSurf/args.gn
 log_success "✅ Default build configuration created at out/HenSurf/args.gn." | tee -a "$LOG_FILE"
 log_progress "BUILD_CONFIG"
 
-# Modify default search engine
-log_info "🔍 Setting DuckDuckGo as default search engine..." | tee -a "$LOG_FILE"
-log_info "   Creating components/search_engines/hensurf_engines.cc..." | tee -a "$LOG_FILE"
-cat > components/search_engines/hensurf_engines.cc << 'EOF'
-// HenSurf custom search engines
-#include "components/search_engines/search_engines_pref_names.h"
-#include "components/search_engines/template_url_prepopulate_data.h"
+# Apply patch for default search engine
+log_info "🔍 Applying 'feature-default-search-engine.patch'..." | tee -a "$LOG_FILE"
+if patch -p1 --forward < "$PROJECT_ROOT/src/hensurf/patches/feature-default-search-engine.patch" 2>&1 | tee -a "$LOG_FILE"; then
+    log_success "✅ 'feature-default-search-engine.patch' applied successfully." | tee -a "$LOG_FILE"
+else
+    PATCH_STATUS=$?
+    log_warn "⚠️ 'feature-default-search-engine.patch' failed (status: $PATCH_STATUS)." | tee -a "$LOG_FILE"
+    PATCH_FAILURES_LIST+=("feature-default-search-engine.patch")
+fi
+log_progress "SEARCH_ENGINE_PATCH"
 
-namespace TemplateURLPrepopulateData {
-
-// DuckDuckGo search engine for HenSurf
-const PrepopulatedEngine duckduckgo = {
-  L"DuckDuckGo",
-  L"duckduckgo.com",
-  "https://duckduckgo.com/favicon.ico",
-  "https://duckduckgo.com/?q={searchTerms}",
-  nullptr,  // No suggestions URL for privacy
-  nullptr,
-  nullptr,
-  nullptr,
-  nullptr,
-  nullptr,
-  nullptr,
-  SEARCH_ENGINE_DUCKDUCKGO,
-  1,  // ID
-};
-
-}  // namespace TemplateURLPrepopulateData
-EOF
-log_success "✅ Created components/search_engines/hensurf_engines.cc." | tee -a "$LOG_FILE"
-log_progress "SEARCH_ENGINE"
-
-# Disable Google API keys
-log_info "🔑 Disabling Google API integration..." | tee -a "$LOG_FILE"
-log_info "   Creating google_apis/google_api_keys.cc to disable Google API calls..." | tee -a "$LOG_FILE"
-cat > google_apis/google_api_keys.cc << 'EOF'
-// HenSurf - Disable Google API keys
-#include "google_apis/google_api_keys.h"
-
-namespace google_apis {
-
-std::string GetAPIKey() { return std::string(); }
-std::string GetOAuth2ClientID(OAuth2Client client) { return std::string(); }
-std::string GetOAuth2ClientSecret(OAuth2Client client) { return std::string(); }
-bool HasAPIKeyConfigured() { return false; }
-bool HasOAuthConfigured() { return false; }
-
-}  // namespace google_apis
-EOF
-log_success "✅ Created google_apis/google_api_keys.cc." | tee -a "$LOG_FILE"
-log_progress "API_DISABLE"
+# Apply patch to disable Google API keys
+log_info "🔑 Applying 'feature-disable-google-apis.patch'..." | tee -a "$LOG_FILE"
+if patch -p1 --forward < "$PROJECT_ROOT/src/hensurf/patches/feature-disable-google-apis.patch" 2>&1 | tee -a "$LOG_FILE"; then
+    log_success "✅ 'feature-disable-google-apis.patch' applied successfully." | tee -a "$LOG_FILE"
+else
+    PATCH_STATUS=$?
+    log_warn "⚠️ 'feature-disable-google-apis.patch' failed (status: $PATCH_STATUS)." | tee -a "$LOG_FILE"
+    PATCH_FAILURES_LIST+=("feature-disable-google-apis.patch")
+fi
+log_progress "API_DISABLE_PATCH"
 
 # Remove promotional content
 log_info "📢 Removing promotional content..." | tee -a "$LOG_FILE"
@@ -229,54 +178,38 @@ find chrome/browser/ui -name "*welcome*" -type f -print -exec rm -f {} \; 2>/dev
 log_success "✅ Promotional content removal attempt finished." | tee -a "$LOG_FILE"
 log_progress "PROMO_REMOVAL"
 
-# Disable crash reporting by default
-log_info "💥 Disabling crash reporting..." | tee -a "$LOG_FILE"
-log_info "   Creating components/crash/core/common/crash_key.cc to disable crash reporting..." | tee -a "$LOG_FILE"
-cat > components/crash/core/common/crash_key.cc << 'EOF'
-// HenSurf - Disable crash reporting
-#include "components/crash/core/common/crash_key.h"
+# Apply patch to disable crash reporting
+log_info "💥 Applying 'feature-disable-crash-reporting.patch'..." | tee -a "$LOG_FILE"
+if patch -p1 --forward < "$PROJECT_ROOT/src/hensurf/patches/feature-disable-crash-reporting.patch" 2>&1 | tee -a "$LOG_FILE"; then
+    log_success "✅ 'feature-disable-crash-reporting.patch' applied successfully." | tee -a "$LOG_FILE"
+else
+    PATCH_STATUS=$?
+    log_warn "⚠️ 'feature-disable-crash-reporting.patch' failed (status: $PATCH_STATUS)." | tee -a "$LOG_FILE"
+    PATCH_FAILURES_LIST+=("feature-disable-crash-reporting.patch")
+fi
+log_progress "CRASH_DISABLE_PATCH"
 
-namespace crash_keys {
-void SetCrashKeyValue(const std::string& key, const std::string& value) {}
-void ClearCrashKey(const std::string& key) {}
-void SetCrashKeyToInt(const std::string& key, int value) {}
-}  // namespace crash_keys
-EOF
-log_success "✅ Created components/crash/core/common/crash_key.cc." | tee -a "$LOG_FILE"
-log_progress "CRASH_DISABLE"
+# Apply patch to update version info
+log_info "📝 Applying 'feature-update-version-info.patch'..." | tee -a "$LOG_FILE"
+if patch -p1 --forward < "$PROJECT_ROOT/src/hensurf/patches/feature-update-version-info.patch" 2>&1 | tee -a "$LOG_FILE"; then
+    log_success "✅ 'feature-update-version-info.patch' applied successfully." | tee -a "$LOG_FILE"
+else
+    PATCH_STATUS=$?
+    log_warn "⚠️ 'feature-update-version-info.patch' failed (status: $PATCH_STATUS)." | tee -a "$LOG_FILE"
+    PATCH_FAILURES_LIST+=("feature-update-version-info.patch")
+fi
+log_progress "VERSION_UPDATE_PATCH"
 
-# Update version info
-log_info "📝 Updating version information in chrome/VERSION..." | tee -a "$LOG_FILE"
-# Using more specific sed commands to avoid accidental replacements.
-log_info "   Running: sed -i.bak 's|^PRODUCT_FULLNAME=Chromium$|PRODUCT_FULLNAME=HenSurf Browser|' chrome/VERSION" | tee -a "$LOG_FILE"
-sed -i.bak 's|^PRODUCT_FULLNAME=Chromium$|PRODUCT_FULLNAME=HenSurf Browser|' chrome/VERSION
-log_info "   Running: sed -i.bak 's|^PRODUCT_SHORTNAME=Chromium$|PRODUCT_SHORTNAME=HenSurf|' chrome/VERSION" | tee -a "$LOG_FILE"
-sed -i.bak 's|^PRODUCT_SHORTNAME=Chromium$|PRODUCT_SHORTNAME=HenSurf|' chrome/VERSION
-log_info "   Removing backup file chrome/VERSION.bak..." | tee -a "$LOG_FILE"
-rm -f chrome/VERSION.bak
-log_success "✅ Version information updated." | tee -a "$LOG_FILE"
-log_progress "VERSION_UPDATE"
-
-# Create HenSurf-specific user agent
-log_info "🌐 Customizing user agent..." | tee -a "$LOG_FILE"
-log_info "   Creating 'components/version_info/hensurf_version_info.cc' for custom user agent..." | tee -a "$LOG_FILE"
-cat > components/version_info/hensurf_version_info.cc << 'EOF'
-#include "components/version_info/version_info.h"
-
-namespace version_info {
-
-std::string GetProductName() {
-  return "HenSurf";
-}
-
-std::string GetProductNameAndVersionForUserAgent() {
-  return "HenSurf/1.0";
-}
-
-}  // namespace version_info
-EOF
-log_success "✅ Created components/version_info/hensurf_version_info.cc." | tee -a "$LOG_FILE"
-log_progress "USER_AGENT"
+# Apply patch for custom user agent file
+log_info "🌐 Applying 'feature-custom-user-agent-file.patch'..." | tee -a "$LOG_FILE"
+if patch -p1 --forward < "$PROJECT_ROOT/src/hensurf/patches/feature-custom-user-agent-file.patch" 2>&1 | tee -a "$LOG_FILE"; then
+    log_success "✅ 'feature-custom-user-agent-file.patch' applied successfully." | tee -a "$LOG_FILE"
+else
+    PATCH_STATUS=$?
+    log_warn "⚠️ 'feature-custom-user-agent-file.patch' failed (status: $PATCH_STATUS)." | tee -a "$LOG_FILE"
+    PATCH_FAILURES_LIST+=("feature-custom-user-agent-file.patch")
+fi
+log_progress "USER_AGENT_PATCH"
 
 # Copy Staged Branding Assets to src/chromium
 HENSURF_STAGED_ASSETS_DIR="$PROJECT_ROOT/src/hensurf/branding/distributable_assets/chromium"

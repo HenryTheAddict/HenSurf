@@ -1,0 +1,35 @@
+--- a/google_apis/google_api_keys.cc
++++ b/google_apis/google_api_keys.cc
+@@ -1,17 +1,13 @@
+-// Copyright 2020 The Chromium Authors
++// Copyright 2020 The Chromium Authors. Modified by HenSurf.
+ // Use of this source code is governed by a BSD-style license that can be
+ // found in the LICENSE file.
+
+ // TODO(macrame): Plumb this through the //google_apis build rules
+ // from a BUILD.gn variable defined at the top-level.
+
+-#include "google_apis/google_api_keys.h"
+-
+-std::string google_apis::GetAPIKey() {
+-  return GOOGLE_API_KEY;
+-}
+-
+-std::string google_apis::GetOAuth2ClientID(Client client) {
+-  return GOOGLE_CLIENT_ID_MAIN;
+-}
+-std::string google_apis::GetOAuth2ClientSecret(Client client) {
+-  return GOOGLE_CLIENT_SECRET_MAIN;
+-}
++// HenSurf - Disable Google API keys
++#include "google_apis/google_api_keys.h"
++
++namespace google_apis {
++
++std::string GetAPIKey() { return std::string(); }
++std::string GetOAuth2ClientID(OAuth2Client client) { return std::string(); }
++std::string GetOAuth2ClientSecret(OAuth2Client client) { return std::string(); }
++bool HasAPIKeyConfigured() { return false; }
++bool HasOAuthConfigured() { return false; }
++
++}  // namespace google_apis

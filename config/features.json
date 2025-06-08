@@ -1,187 +1,131 @@
 {
-  "hensurf_version": "1.0.0",
-  "chromium_base_version": "latest",
-  "build_date": "2024",
-  
-  "removed_features": {
-    "ai_and_ml": {
-      "autofill_assistant": "removed",
-      "smart_suggestions": "disabled",
-      "predictive_text": "disabled",
-      "machine_learning_apis": "removed",
-      "voice_search": "disabled",
-      "google_now": "removed",
-      "supervised_users": "disabled"
-    },
-    
-    "google_services": {
-      "google_apis": "disabled",
-      "account_sync": "removed",
-      "signin_flow": "disabled",
-      "safe_browsing": "replaced_with_local",
-      "spell_check": "disabled",
-      "cloud_policy": "disabled",
-      "crash_reporting": "made_optional"
-    },
-    
-    "bloatware": {
-      "welcome_screen": "disabled",
-      "promotional_content": "removed",
-      "chrome_tips": "removed",
-      "whats_new": "disabled",
-      "app_suggestions": "removed",
-      "extension_promotions": "disabled"
-    },
-    
-    "telemetry": {
-      "usage_statistics": "disabled",
-      "performance_metrics": "disabled",
-      "feature_usage_tracking": "disabled",
-      "error_reporting": "made_optional",
-      "analytics": "completely_removed"
-    }
-  },
-  
-  "enhanced_features": {
-    "privacy": {
-      "default_search_engine": "DuckDuckGo",
-      "third_party_cookies": "blocked",
-      "cross_site_tracking": "prevented",
-      "fingerprinting_protection": "enabled",
-      "dns_over_https": "enabled",
-      "referrer_policy": "strict"
-    },
-    
-    "security": {
-      "https_only_mode": "available",
-      "certificate_transparency": "enabled",
-      "hsts_enforcement": "enabled",
-      "site_isolation": "enabled",
-      "process_sandboxing": "enhanced"
-    },
-    
-    "performance": {
-      "startup_optimization": "enabled",
-      "memory_optimization": "enabled",
-      "network_efficiency": "improved",
-      "background_processing": "minimized"
-    }
-  },
-  
-  "default_settings": {
-    "search_engine": "DuckDuckGo",
-    "homepage": "about:blank",
-    "new_tab_page": "minimal",
-    "cookie_policy": "session_only",
-    "javascript": "enabled",
-    "images": "enabled",
-    "location_access": "ask",
-    "camera_access": "ask",
-    "microphone_access": "ask",
-    "notifications": "ask",
-    "downloads_location": "ask",
-    "password_manager": "enabled",
-    "autofill": "basic_only"
-  },
-  
-  "build_configuration": {
-    "is_debug": false,
-    "is_component_build": false,
-    "is_official_build": true,
-    "symbol_level": 1,
-    "enable_nacl": false,
-    "enable_widevine": false,
-    "enable_extensions": true,
-    "enable_webrtc": true,
-    "proprietary_codecs": true,
-    "ffmpeg_branding": "Chrome",
-    "use_jumbo_build": true,
-    "target_cpu": "x64",
-    "mac_deployment_target": "10.15"
-  },
-  
-  "branding": {
-    "company_name": "HenSurf",
-    "product_name": "HenSurf Browser",
-    "version": "1.0.0.0",
+  "project": {
+    "name": "HenSurf Browser",
+    "version": "1.0.0",
+    "tagline": "A privacy-first, de-googled Chromium fork focused on security and performance.",
     "homepage": "hensurf.h3nry.xyz",
-    "user_agent": "HenSurf",
-    "default_search_engine": "DuckDuckGo",
-    "logo": {
-      "source_file": "../Hensurf.png",
-      "icon_sizes": [16, 32, 48, 64, 128, 256, 512],
-      "formats": ["png", "ico", "icns"],
-      "integration_script": "scripts/setup-logo.sh",
-      "manifest": "branding/icons/icon_manifest.json"
+    "license": "BSD_3_Clause",
+    "repository": "https://github.com/HenryTheAddict/HenSurf",
+    "branding": {
+      "companyName": "HenSurf",
+      "productName": "HenSurf Browser",
+      "userAgent": "HenSurf"
     }
   },
-  
-  "recommended_extensions": [
-    {
-      "name": "uBlock Origin",
-      "purpose": "Ad and tracker blocking",
-      "privacy_benefit": "Blocks ads and trackers"
-    },
-    {
-      "name": "Privacy Badger",
-      "purpose": "Tracker protection",
-      "privacy_benefit": "Prevents cross-site tracking"
-    },
-    {
-      "name": "HTTPS Everywhere",
-      "purpose": "Force HTTPS connections",
-      "privacy_benefit": "Encrypts web traffic"
-    },
-    {
-      "name": "ClearURLs",
-      "purpose": "Remove tracking parameters",
-      "privacy_benefit": "Cleans tracking from URLs"
+  "architecture": {
+    "chromiumBaseVersion": "latest",
+    "buildDate": "2024",
+    "buildSystem": "gn + ninja",
+    "target": {
+      "cpu": "x64",
+      "macDeployment": "10.15"
     }
-  ],
-  
-  "testing": {
-    "automated_tests": [
-      "startup_test",
-      "search_engine_test",
-      "google_services_removal_test",
-      "privacy_settings_test",
-      "extension_support_test",
-      "network_connectivity_test",
-      "performance_test"
+  },
+  "featureProfile": {
+    "privacy": {
+      "level": "enhanced",
+      "summary": "Actively strips telemetry and tracking, blocks third-party intrusion, and defaults to privacy-respecting services.",
+      "features": {
+        "defaultSearch": "DuckDuckGo",
+        "thirdPartyCookies": { "status": "blocked" },
+        "crossSiteTracking": { "status": "prevented" },
+        "fingerprintingProtection": { "status": "enabled" },
+        "dnsOverHttps": { "status": "enabled" },
+        "referrerPolicy": { "status": "strict-origin-when-cross-origin" }
+      }
+    },
+    "security": {
+      "level": "enhanced",
+      "summary": "Enforces modern security protocols and enhances process isolation.",
+      "features": {
+        "httpsOnlyMode": { "status": "available" },
+        "certificateTransparency": { "status": "enforced" },
+        "hstsEnforcement": { "status": "enabled" },
+        "siteIsolation": { "status": "enabled" },
+        "processSandboxing": { "status": "enhanced" }
+      }
+    },
+    "performance": {
+      "level": "optimized",
+      "summary": "Improves speed and resource usage by removing bloat and optimizing background processes.",
+      "features": {
+        "startupOptimization": { "status": "enabled" },
+        "memoryOptimization": { "status": "enabled" },
+        "networkEfficiency": { "status": "improved" },
+        "backgroundProcessing": { "status": "minimized" }
+      }
+    }
+  },
+  "removedServices": {
+    "googleIntegration": [
+      "autofill_assistant", "account_sync", "signin_flow", "safe_browsing", "spell_check", "google_apis", "cloud_policy", "google_now"
     ],
-    "manual_verification": [
-      "no_ai_suggestions",
-      "no_google_signin",
-      "duckduckgo_default",
-      "privacy_defaults",
-      "no_promotional_content",
-      "extension_installation"
+    "aiMachineLearning": [
+      "smart_suggestions", "predictive_text", "machine_learning_apis", "voice_search"
+    ],
+    "telemetryAndAnalytics": [
+      "usage_statistics", "performance_metrics", "feature_usage_tracking", "crash_reporting", "analytics"
+    ],
+    "uiBloatAndPromotions": [
+      "welcome_screen", "promotional_content", "chrome_tips", "whats_new", "app_suggestions", "extension_promotions"
     ]
   },
-  
-  "compliance": {
-    "privacy_standards": [
-      "GDPR_compliant",
-      "CCPA_compliant",
-      "minimal_data_collection",
-      "user_control",
-      "transparency"
-    ],
-    "security_standards": [
-      "regular_updates",
-      "vulnerability_disclosure",
-      "secure_defaults",
-      "sandboxing",
-      "encryption"
+  "defaultConfiguration": {
+    "startup": {
+      "homepage": "about:blank",
+      "newTabPage": "minimal"
+    },
+    "content": {
+      "cookiePolicy": "session_only",
+      "javascriptEnabled": true,
+      "imagesEnabled": true
+    },
+    "permissions": {
+      "location": "ask",
+      "camera": "ask",
+      "microphone": "ask",
+      "notifications": "ask"
+    },
+    "userProfile": {
+      "downloadsLocation": "ask",
+      "passwordManager": "enabled",
+      "autofill": "basic"
+    }
+  },
+  "buildConfiguration": {
+    "officialBuild": true,
+    "debugBuild": false,
+    "componentBuild": false,
+    "symbolLevel": 1,
+    "flags": {
+      "enableNacl": false,
+      "enableWidevine": false,
+      "enableExtensions": true,
+      "enableWebRtc": true,
+      "useProprietaryCodecs": true,
+      "useJumboBuild": true
+    }
+  },
+  "ecosystem": {
+    "recommendedExtensions": [
+      { "name": "uBlock Origin", "purpose": "Content, ad, and tracker blocking." },
+      { "name": "Privacy Badger", "purpose": "Automatically learns to block invisible trackers." },
+      { "name": "HTTPS Everywhere", "purpose": "Encrypts communications by forcing HTTPS." },
+      { "name": "ClearURLs", "purpose": "Removes tracking parameters from URLs." }
     ]
   },
-  
-  "development": {
-    "source_control": "git",
-    "build_system": "gn + ninja",
-    "patch_system": "unified_diff",
-    "testing_framework": "chromium_tests + custom",
-    "documentation": "markdown",
-    "license": "BSD_3_Clause"
+  "qualityAssurance": {
+    "compliance": {
+      "privacy": ["GDPR", "CCPA"],
+      "security": ["Vulnerability Disclosure Policy", "Regular Updates"]
+    },
+    "testing": {
+      "automated": [
+        "startup_test", "search_engine_test", "google_services_removal_test", "privacy_settings_test", "extension_support_test", "network_connectivity_test", "performance_test"
+      ],
+      "manualVerification": [
+        "no_ai_suggestions", "no_google_signin", "duckduckgo_default", "privacy_defaults", "no_promotional_content", "extension_installation"
+      ]
+    }
   }
 }

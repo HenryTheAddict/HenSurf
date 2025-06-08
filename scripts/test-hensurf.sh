@@ -160,8 +160,33 @@ else
     echo "⚠️  Network connectivity test failed (may be network issue)"
 fi
 
+# Test 8: Default homepage test (should be about:blank)
+echo "🏠 Test 8: Default homepage test..."
+./chromium/src/out/HenSurf/chrome \
+    --user-data-dir="$TEST_DIR/homepage-profile" \
+    --no-first-run \
+    --headless \
+    --dump-dom \
+    --virtual-time-budget=500 \
+    > "$TEST_DIR/homepage_test.html" 2>&1
+
+# Check for characteristics of about:blank (empty title, empty body, or very minimal content)
+# An empty body tag `<body></body>` is a strong indicator.
+# Or check that the html is very short, less than, say, 300 bytes.
+if [ -f "$TEST_DIR/homepage_test.html" ] && \
+   (grep -q -E "<body(\s[^>]*)?>\s*</body>" "$TEST_DIR/homepage_test.html" || \
+    ( [ $(wc -c <"$TEST_DIR/homepage_test.html") -lt 300 ] && \
+      grep -q "<head></head>" "$TEST_DIR/homepage_test.html" ) ); then
+    echo "✅ Default homepage test passed (appears to be about:blank)"
+else
+    echo "❌ Default homepage test failed (DOM does not look like about:blank)"
+    cat "$TEST_DIR/homepage_test.html"
+    # exit 1 # Optional: decide if this failure is critical
+fi
+
+
 # Performance test
-echo "⚡ Test 8: Performance test..."
+echo "⚡ Test 9: Performance test..."
 START_TIME=$(date +%s%N)
 ./chromium/src/out/HenSurf/chrome \
     --user-data-dir="$TEST_DIR" \

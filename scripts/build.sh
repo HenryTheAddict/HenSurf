@@ -36,6 +36,20 @@ fi
 export PATH="$DEPOT_TOOLS_DIR_ABS:$PATH"
 echo "🔧 Added depot_tools to PATH: $DEPOT_TOOLS_DIR_ABS"
 
+# Configure ccache
+export CCACHE_CPP2=true
+export CCACHE_SLOPPINESS="time_macros"
+# Optional: export CCACHE_DIR="/path/to/your/ccache_directory"
+
+# Verify ccache is found and print stats (optional, but good for debugging)
+if command -v ccache &> /dev/null; then
+    echo "✅ ccache found: $(command -v ccache)"
+    echo "Initial ccache statistics:"
+    ccache -s
+else
+    echo "⚠️ ccache command not found. Build will proceed without ccache (ensure use_ccache is false in args.gn or ccache is installed)."
+fi
+
 # Navigate to the chromium source directory
 CHROMIUM_SRC_DIR="$PROJECT_ROOT_BUILD/chromium/src"
 if [ ! -d "$CHROMIUM_SRC_DIR" ]; then

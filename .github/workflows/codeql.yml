@@ -87,17 +87,15 @@ jobs:
         EOF
         LATEST_TAG_REF=$(git ls-remote --tags --sort="-v:refname" https://chromium.googlesource.com/chromium/src.git | grep -oP 'refs/tags/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
         if [ -z "$LATEST_TAG_REF" ]; then echo "Error: Could not determine latest stable Chromium tag." && exit 1; fi
-        echo "Fetching latest stable tag reference: $LATEST_TAG_REF"
         git fetch --depth=1 origin "$LATEST_TAG_REF"
         git checkout FETCH_HEAD
 
-    - name: Sync GClient DEPS and Runhooks
+    - name: Sync Dependencies and Toolchain
       working-directory: ${{ github.workspace }}/chromium
       run: |
         set -e
         gclient config --spec 'solutions = [{"name": "src", "url": "https://chromium.googlesource.com/chromium/src.git", "managed": False}]'
-        gclient sync -D --nohooks
-        gclient runhooks -j8
+        gclient sync -D
 
     - name: Apply HenSurf Patches
       working-directory: ${{ github.workspace }}/chromium/src

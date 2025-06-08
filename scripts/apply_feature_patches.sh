@@ -4,8 +4,6 @@
 #
 # HenSurf Browser - Feature Patch Management Tool
 #
-# Author: [Your Name/Team]
-# Version: 2.0.0
 #
 # -----------------------------------------------------------------------------------
 #

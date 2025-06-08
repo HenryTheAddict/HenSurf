@@ -28,8 +28,7 @@ fi
 case "$ACTION" in
   apply)
     echo "Applying patch: $PATCH_FILE"
-    git apply --reject --ignore-whitespace --unidiff-zero "$PATCH_FILE"
-    if [ $? -eq 0 ]; then
+    if git apply --reject --ignore-whitespace --unidiff-zero "$PATCH_FILE"; then
       echo "Patch applied successfully."
     else
       echo "Error applying patch. Check for .rej files for conflicts."
@@ -38,8 +37,7 @@ case "$ACTION" in
     ;;
   unapply)
     echo "Unapplying patch: $PATCH_FILE"
-    git apply --reverse --reject --ignore-whitespace --unidiff-zero "$PATCH_FILE"
-    if [ $? -eq 0 ]; then
+    if git apply --reverse --reject --ignore-whitespace --unidiff-zero "$PATCH_FILE"; then
       echo "Patch unapplied successfully."
     else
       echo "Error unapplying patch. Check for .rej files for conflicts."

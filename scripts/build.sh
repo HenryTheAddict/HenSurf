@@ -85,7 +85,7 @@ BUILD_LOG_FILE="$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/build.log"
 # Ensure output directory exists for the log file and build artifacts
 mkdir -p "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR"
 # Clear previous log file or create if not exists
->"$BUILD_LOG_FILE"
+true >"$BUILD_LOG_FILE"
 
 log_info "🔨 Building HenSurf Browser for $FINAL_TARGET_OS ($FINAL_TARGET_CPU)..." | tee -a "$BUILD_LOG_FILE"
 log_info "   Output directory (relative to $CHROMIUM_SRC_DIR): $FINAL_OUTPUT_DIR" | tee -a "$BUILD_LOG_FILE"
@@ -347,9 +347,6 @@ GN_GEN_STATUS=${PIPESTATUS[0]} # Get status of gn gen command
 
 log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished gn generation." | tee -a "$BUILD_LOG_FILE"
 
-if [ $GN_GEN_STATUS -ne 0 ]; then
-    log_error "❌ Failed to generate build files in $FINAL_OUTPUT_DIR. Check the configuration and $BUILD_LOG_FILE." | tee -a "$BUILD_LOG_FILE"
-    log_error "   Make sure that '$FINAL_OUTPUT_DIR/args.gn' is correctly configured, potentially by including 'import(\"//build/config/hensurf/hensurf.gn\")'." | tee -a "$BUILD_LOG_FILE"
     exit 1
 fi
 
@@ -395,8 +392,6 @@ if command_exists "ccache"; then
     ccache -s 2>&1 | tee -a "$BUILD_LOG_FILE"
 fi
 
-if [ $CHROME_BUILD_STATUS -ne 0 ]; then
-    log_error "❌ Build failed for chrome target in $FINAL_OUTPUT_DIR. Check $BUILD_LOG_FILE for details." | tee -a "$BUILD_LOG_FILE"
     exit 1
 fi
 
@@ -489,9 +484,6 @@ if [[ "$FINAL_TARGET_OS" == "mac" ]]; then
     fi
 
     if [ "$BUILD_MINI_INSTALLER" = true ]; then
-        log_info "📦 Building macOS installer (dmg) in $FINAL_OUTPUT_DIR..." | tee -a "$BUILD_LOG_FILE"
-        # Check if a .dmg already exists in the output directory
-        DMG_CHECK_FILE=$(ls "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR"/*.dmg 2>/dev/null | head -n 1)
         if [ -f "$DMG_CHECK_FILE" ]; then
             log_info "ℹ️ macOS installer artifact ($DMG_CHECK_FILE) already exists in $FINAL_OUTPUT_DIR. Skipping build." | tee -a "$BUILD_LOG_FILE"
         else
@@ -556,7 +548,6 @@ if [[ "$FINAL_TARGET_OS" == "mac" ]]; then
         log_info "   macOS App Bundle: $FINAL_OUTPUT_DIR/HenSurf.app" | tee -a "$BUILD_LOG_FILE"
     fi
     if [ "$BUILD_MINI_INSTALLER" = true ]; then
-        DMG_FILE=$(ls "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR"/*.dmg 2>/dev/null | head -n 1) # Check for any .dmg file
         if [ -f "$DMG_FILE" ]; then
             log_info "   macOS Installer:  $(basename "$DMG_FILE") (in $FINAL_OUTPUT_DIR/)" | tee -a "$BUILD_LOG_FILE"
         elif [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/HenSurf.dmg" ]; then # Check for specific name if generic one not found
@@ -570,8 +561,6 @@ elif [[ "$FINAL_TARGET_OS" == "win" ]]; then
         elif [ -f "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR/setup.exe" ]; then # Chromium often names it setup.exe
             log_info "   Windows Installer: $FINAL_OUTPUT_DIR/setup.exe" | tee -a "$BUILD_LOG_FILE"
         else
-            # Check for any file that looks like an installer if specific names aren't found
-            WIN_INSTALLER_FILE=$(ls "$CHROMIUM_SRC_DIR/$FINAL_OUTPUT_DIR"/*installer.exe 2>/dev/null | head -n 1)
             if [ -f "$WIN_INSTALLER_FILE" ]; then
                  log_info "   Windows Installer: $(basename "$WIN_INSTALLER_FILE") (in $FINAL_OUTPUT_DIR/)" | tee -a "$BUILD_LOG_FILE"
             fi

@@ -9,7 +9,7 @@ _log() {
     local level="$1"
     shift
     local message="$*"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local timestamp; timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     echo "[$timestamp] [$level] $message"
 }
 
@@ -71,8 +71,7 @@ check_python_version() {
     fi
 
     local python_version_full
-    python_version_full=$($python_cmd --version 2>&1)
-    if [[ $? -ne 0 ]]; then
+    if ! python_version_full=$($python_cmd --version 2>&1); then
         log_error "Failed to get Python version from '$python_cmd'. Output: $python_version_full"
         return 1
     fi

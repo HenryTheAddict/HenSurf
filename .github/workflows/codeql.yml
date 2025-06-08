@@ -17,17 +17,97 @@ jobs:
       contents: read
       security-events: write
 
+    env:
+      DEPOT_TOOLS_DIR: ${{ github.workspace }}/depot_tools
+
     steps:
-    - name: Checkout repository
+    - name: Checkout HenSurf repository
       uses: actions/checkout@v4
+      with:
+        path: hensurf
+
+    - name: Install depot_tools
+      run: |
+        git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git ${{ env.DEPOT_TOOLS_DIR }}
+        echo "${{ env.DEPOT_TOOLS_DIR }}" >> $GITHUB_PATH
+
+    - name: Fetch pinned Chromium version
+      working-directory: ${{ github.workspace }}
+      run: |
+        echo "Fetching latest Chromium source..."
+        mkdir chromium && cd chromium
+        gclient config --spec 'solutions = [
+          {
+            "name": "src",
+            "url": "https://chromium.googlesource.com/chromium/src.git",
+            "managed": False,
+            "custom_deps": {},
+            "custom_vars": {
+                "checkout_pgo_profiles": False,
+                "checkout_nacl": False,
+                "checkout_ios_webkit": False,
+                "checkout_reclient": False,
+                "checkout_android": False,
+                "checkout_fuchsia": False,
+                "checkout_cast": False,
+                "checkout_chromeos": False,
+            },
+          },
+        ]
+        target_os = ["linux"]
+        cache_dir = "${{ github.workspace }}/cache_dir"'
+        gclient sync --no-history --nohooks -j8 -D --with_branch_heads --with_tags
+
+    - name: Run gclient runhooks
+      working-directory: ${{ github.workspace }}/chromium
+      run: |
+        gclient runhooks -j8
+
+    - name: Apply HenSurf patches
+      working-directory: ${{ github.workspace }}/chromium/src
+      run: |
+        # Ensure the HenSurf scripts are executable
+        chmod +x ${{ github.workspace }}/hensurf/scripts/apply-patches.sh
+        bash ${{ github.workspace }}/hensurf/scripts/apply-patches.sh --no-fetch
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
+        languages: cpp
         queries: security-extended
 
-    - name: Autobuild
-      uses: github/codeql-action/autobuild@v3
+    - name: Build HenSurf components for CodeQL
+      working-directory: ${{ github.workspace }}/chromium/src
+      shell: bash
+      run: |
+        echo "Starting build for CodeQL tracing..."
+        # Setup GN args - these should be consistent with how HenSurf is normally built.
+        # is_debug=true can help CodeQL analysis.
+        # symbol_level=1 or 2 might be needed for better data for CodeQL.
+        # treat_warnings_as_errors=false is important to ensure the build completes for analysis.
+        gn gen ${{ github.workspace }}/chromium/out/CodeQL --args='
+          is_debug=true
+          is_clang=true
+          symbol_level=1
+          treat_warnings_as_errors=false
+          enable_nacl=false
+          use_rtti=true
+        '
+
+        # Build specific targets relevant to HenSurf's C++ code.
+        # IMPORTANT: These targets must be the actualninja targets that compile HenSurf's C++ files
+        # (e.g., hensurf_engines.cc, hensurf_version_info.cc).
+        # If these files are part of larger component targets, list those.
+        # Example placeholder targets:
+        echo "Building HenSurf specific targets (components/search_engines, components/version_info)..."
+        autoninja -C ${{ github.workspace }}/chromium/out/CodeQL components/search_engines components/version_info
+
+        # If HenSurf files reside in other or more specific targets, adjust the line above.
+        # For example:
+        # autoninja -C ${{ github.workspace }}/chromium/out/CodeQL path/to/hensurf_target_1 path/to/hensurf_target_2
+        echo "Build for CodeQL tracing finished."
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:cpp"

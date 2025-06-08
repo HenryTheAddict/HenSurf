@@ -1,0 +1,155 @@
+name: Clang-Tidy C++ Analysis
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  analyze_cpp:
+    runs-on: ubuntu-latest
+    env:
+      DEPOT_TOOLS_DIR: ${{ github.workspace }}/depot_tools
+
+    steps:
+      - name: Checkout HenSurf repository
+        uses: actions/checkout@v4
+        with:
+          path: hensurf
+
+      - name: Install depot_tools
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git ${{ env.DEPOT_TOOLS_DIR }}
+          echo "${{ env.DEPOT_TOOLS_DIR }}" >> $GITHUB_PATH
+
+      - name: Fetch pinned Chromium version
+        working-directory: ${{ github.workspace }}
+        run: |
+          echo "Fetching latest Chromium source..."
+
+          mkdir chromium && cd chromium
+
+          # IMPORTANT: Replace YOUR_TARGET_CHROMIUM_URL_WITH_SOLUTION if not using the main chromium/src.git
+          # For most cases, "https://chromium.googlesource.com/chromium/src.git" is correct.
+          gclient config --spec 'solutions = [
+            {
+              "name": "src",
+              "url": "https://chromium.googlesource.com/chromium/src.git",
+              "managed": False,
+              "custom_deps": {},
+              "custom_vars": {
+                  "checkout_pgo_profiles": False,
+                  "checkout_nacl": False,
+                  "checkout_ios_webkit": False,
+                  "checkout_reclient": False,
+                  "checkout_android": False,
+                  "checkout_fuchsia": False,
+                  "checkout_cast": False,
+                  "checkout_chromeos": False,
+              },
+            },
+          ]
+          target_os = ["linux"]
+          cache_dir = "${{ github.workspace }}/cache_dir"'
+
+          # Using --no-history, --nohooks, -D (delete unversioned trees) to speed up and reduce size.
+          # -j8 for parallel jobs, adjust based on runner capabilities.
+          gclient sync --no-history --nohooks -j8 -D --with_branch_heads --with_tags
+
+      - name: Run gclient runhooks
+        working-directory: ${{ github.workspace }}/chromium
+        run: |
+          # This step downloads toolchains like Clang, including clang-tidy
+          gclient runhooks -j8
+
+      - name: Apply HenSurf patches
+        working-directory: ${{ github.workspace }}/chromium/src
+        run: |
+          # Ensure the HenSurf scripts are executable
+          chmod +x ${{ github.workspace }}/hensurf/scripts/apply-patches.sh
+
+          # The --no-fetch flag is important as Chromium source is already checked out.
+          # This script might need adjustment if it has hardcoded paths or fetching logic
+          # not compatible with this workflow structure.
+          bash ${{ github.workspace }}/hensurf/scripts/apply-patches.sh --no-fetch
+
+      - name: Generate compile_commands.json
+        working-directory: ${{ github.workspace }}/chromium/src
+        run: |
+          # These args are crucial and might need tuning for HenSurf's specific build targets.
+          # is_debug=false, symbol_level=0, remove_configs are to reduce build size/time.
+          # export_compile_commands=true is essential for clang-tidy.
+          # use_rtti=true is often needed for C++ static analysis tools.
+          gn gen ${{ github.workspace }}/chromium/out/ClangTidy --args='
+            is_debug=false
+            is_official_build=false
+            symbol_level=0
+            is_clang=true
+            treat_warnings_as_errors=false
+            enable_nacl=false
+            use_rtti=true
+            export_compile_commands=true
+            remove_configs += [ "//build/config/compiler:default_symbols" ]
+            blink_symbol_level=0
+          '
+          # Optionally, build a small, relevant target to ensure the compilation database is populated
+          # for the files you intend to lint. If HenSurf files are part of a specific target, build that.
+          # Example: autoninja -C ${{ github.workspace }}/chromium/out/ClangTidy components/version_info:version_info
+          # For now, just generating the files. If clang-tidy fails to find files, building a target might be needed.
+
+      - name: Run clang-tidy
+        working-directory: ${{ github.workspace }}/chromium/src
+        run: |
+          CLANG_TIDY_PATH="${{ github.workspace }}/chromium/src/third_party/llvm-build/Release+Asserts/bin/clang-tidy"
+          COMPILE_COMMANDS_DB_DIR="${{ github.workspace }}/chromium/out/ClangTidy"
+
+          # Check if clang-tidy exists
+          if [ ! -f "$CLANG_TIDY_PATH" ]; then
+            echo "Error: clang-tidy not found at $CLANG_TIDY_PATH"
+            echo "Listing contents of third_party/llvm-build/Release+Asserts/bin/:"
+            ls -l "${{ github.workspace }}/chromium/src/third_party/llvm-build/Release+Asserts/bin/"
+            exit 1
+          fi
+
+          # Check if compile_commands.json exists
+          if [ ! -f "${COMPILE_COMMANDS_DB_DIR}/compile_commands.json" ]; then
+            echo "Error: compile_commands.json not found in $COMPILE_COMMANDS_DB_DIR"
+            exit 1
+          fi
+
+          # List of HenSurf specific files (relative to chromium/src)
+          # TODO: These paths need to be accurate based on where HenSurf patches place files.
+          HENSURF_FILES=(
+            "components/search_engines/hensurf_engines.cc"
+            "components/version_info/hensurf_version_info.cc"
+            # Add other C++ files modified or added by HenSurf patches
+          )
+
+          echo "Running clang-tidy on specific HenSurf files..."
+          touch ${{ github.workspace }}/clang_tidy_output.txt
+
+          for file_path in "${HENSURF_FILES[@]}"; do
+            if [ -f "$file_path" ]; then
+              echo "Linting $file_path"
+              # The -p option takes the directory of compile_commands.json
+              $CLANG_TIDY_PATH -p="$COMPILE_COMMANDS_DB_DIR" "$file_path" >> ${{ github.workspace }}/clang_tidy_output.txt 2>&1
+            else
+              echo "Warning: File $file_path not found in ${{ github.workspace }}/chromium/src. Skipping."
+            fi
+          done
+
+          echo "Clang-tidy analysis complete. Output logged to clang_tidy_output.txt"
+          # Example of how to fail the job if clang-tidy finds issues (requires parsing output or using exit codes)
+          # if grep -q "warning:" ${{ github.workspace }}/clang_tidy_output.txt || grep -q "error:" ${{ github.workspace }}/clang_tidy_output.txt; then
+          #   echo "Clang-tidy found issues."
+          #   # exit 1 # Uncomment to fail the job
+          # fi
+
+      - name: Upload clang-tidy log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: clang-tidy-log
+          path: |
+            ${{ github.workspace }}/clang_tidy_output.txt

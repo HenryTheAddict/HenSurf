@@ -1,0 +1,4 @@
+--args=target_cpu=arm64
+--args=target_cpu=arm64
+--args=target_cpu=arm64
+--args=target_cpu=arm64

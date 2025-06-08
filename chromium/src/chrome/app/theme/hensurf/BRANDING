@@ -1,0 +1,51 @@
+# HenSurf Browser Branding Configuration
+# This file defines the branding information for HenSurf
+
+COMPANY_FULLNAME=HenSurf
+COMPANY_SHORTNAME=HenSurf
+PRODUCT_FULLNAME=HenSurf Browser
+PRODUCT_SHORTNAME=HenSurf
+PRODUCT_INSTALLER_FULLNAME=HenSurf Browser Installer
+COPYRIGHT=Copyright 2025 HenSurf. All rights reserved.
+OFFICIAL_BUILD=1
+
+# Version information
+MAJOR=1
+MINOR=0
+BUILD=0
+PATCH=0
+
+# URLs and identifiers
+HOMEPAGE_URL=hensurf.h3nry.xyz
+SUPPORT_URL=hensurf.h3nry.xyz/support
+PRIVACY_POLICY_URL=hensurf.h3nry.xyz/privacy
+TERMS_OF_SERVICE_URL=hensurf.h3nry.xyz/terms
+
+# Remove Google-specific identifiers
+GOOGLE_API_KEY=
+GOOGLE_DEFAULT_CLIENT_ID=
+GOOGLE_DEFAULT_CLIENT_SECRET=
+
+# Update server (for auto-updates)
+UPDATE_URL=https://hensurf.h3nry.xyz/update
+
+# Crash reporting (disabled by default)
+CRASH_REPORT_URL=
+
+# Search engine settings
+DEFAULT_SEARCH_ENGINE_NAME=DuckDuckGo
+DEFAULT_SEARCH_ENGINE_URL=https://duckduckgo.com/?q={searchTerms}
+
+# User agent string
+USER_AGENT_PRODUCT=HenSurf
+
+# Logo and icon paths
+LOGO_PATH=../Hensurf.png
+ICON_16=icons/icon_16.png
+ICON_32=icons/icon_32.png
+ICON_48=icons/icon_48.png
+ICON_64=icons/icon_64.png
+ICON_128=icons/icon_128.png
+ICON_256=icons/icon_256.png
+ICON_512=icons/icon_512.png
+ICON_MANIFEST=icons/icon_manifest.json

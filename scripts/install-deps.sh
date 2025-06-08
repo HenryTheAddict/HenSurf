@@ -24,9 +24,9 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     brew update
 
     # Install required packages for macOS
-    # Common deps: python3, git, ninja, pkg-config
-    echo "📦 Installing required packages for macOS (python3, git, ninja, pkg-config)..."
-    brew install python3 git ninja pkg-config
+    # Common deps: python3, git, ninja, pkg-config, ccache
+    echo "📦 Installing required packages for macOS (python3, git, ninja, pkg-config, ccache)..."
+    brew install python3 git ninja pkg-config ccache
 
     # Install Xcode Command Line Tools if not present
     if ! xcode-select -p &> /dev/null; then
@@ -43,6 +43,15 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     else
         echo "✅ Xcode Command Line Tools already installed"
     fi
+
+    echo ""
+    echo "💡 For optimal performance and to avoid issues, please also consider the following manual steps:"
+    echo "   1. Exclude your Chromium/HenSurf checkout directory from Spotlight indexing."
+    echo "      (System Settings -> Siri & Spotlight -> Spotlight Privacy... -> Add your checkout folder)"
+    echo "   2. Ensure the Xcode license agreement is accepted by running in your terminal:"
+    echo "      sudo xcodebuild -license accept"
+    echo ""
+    read -p "Press [Enter] to acknowledge these recommendations and continue..."
 
 elif [[ "$OSTYPE" == "cygwin"* ]] || [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
     echo "💻 Detected Windows"

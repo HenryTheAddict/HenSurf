@@ -1,0 +1,28 @@
+#!/bin/bash
+echo "Mock xcode-select: Called with $*" >> /tmp/xcode_select_calls.log
+if [[ "$*" == "-p" ]]; then
+  if [ -f /tmp/xcode_installed_flag ]; then
+    # This case handles the check *after* the simulated install prompt
+    rm /tmp/xcode_installed_flag # clean up
+    echo "/Applications/Xcode.app/Contents/Developer"
+    # Script ends, implies success
+  else
+    # This case handles the initial check for "if ! xcode-select -p"
+    # To trigger install, this should fail.
+    # No output and returning a non-zero status is ideal.
+    # However, we can't use exit 1 directly.
+    # So, print to stderr and produce no stdout. The calling script checks `&> /dev/null`
+    # so it relies on the return code.
+    # The `run_in_bash_session` might not let us set specific return codes easily without `exit`.
+    # Let's try making it output nothing, which might be enough for "if ! command -v ..." constructs
+    # or for "if ! xcode-select -p &> /dev/null".
+    echo "Mock xcode-select: Simulating Xcode not found (initial -p check)" >&2
+  fi
+elif [[ "$*" == "--install" ]]; then
+  echo "Mock xcode-select: Simulating --install. Please acknowledge prompt in script." >> /tmp/xcode_select_calls.log
+  touch /tmp/xcode_installed_flag # Simulate that the install process has started
+  # Script ends, implies success for this command
+else
+  echo "Mock xcode-select: unhandled args $*" >&2
+  # Produce no stdout for unhandled to signify failure to the calling script
+fi

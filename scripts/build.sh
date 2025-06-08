@@ -169,9 +169,29 @@ if [ "$AVAILABLE_SPACE_GB" -lt "$MIN_BUILD_DISK_SPACE_GB" ]; then
     fi
 fi
 
+# Determine target_cpu for macOS
+GN_ARGS_EXTRA=""
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    HOST_ARCH=$(uname -m)
+    if [[ "$HOST_ARCH" == "arm64" ]]; then
+        echo "🍏 Detected Apple Silicon (arm64). Setting target_cpu=arm64."
+        GN_ARGS_EXTRA="--args=target_cpu=\"arm64\""
+    elif [[ "$HOST_ARCH" == "x86_64" ]]; then
+        echo "🍏 Detected Intel (x86_64). Setting target_cpu=x64."
+        GN_ARGS_EXTRA="--args=target_cpu=\"x64\""
+    else
+        echo "⚠️ Unknown macOS architecture: $HOST_ARCH. Using default target_cpu from args.gn."
+    fi
+fi
+
 # Generate build files
 echo "⚙️  Generating build files..."
-gn gen out/HenSurf
+if [[ -n "$GN_ARGS_EXTRA" ]]; then
+    # Use eval to correctly parse the quoted arguments within GN_ARGS_EXTRA
+    eval "gn gen out/HenSurf $GN_ARGS_EXTRA"
+else
+    gn gen out/HenSurf
+fi
 
 if [ $? -ne 0 ]; then
     echo "❌ Failed to generate build files. Check the configuration."
@@ -223,33 +243,47 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
         rm -rf out/HenSurf/HenSurf.app
     fi
 
-    # Copy and rename the Chrome app bundle
-    # Try common names for the output app bundle from Chromium build
-    CHROME_APP_NAMES=( "Chromium.app" "Google Chrome.app" "Chrome.app" )
+    # App Name Discovery (is_chrome_branded = false, so expect "Chromium.app")
+    EXPECTED_CHROMIUM_APP_NAME="Chromium.app"
     APP_COPIED=false
-    for app_name in "${CHROME_APP_NAMES[@]}"; do
-        if [ -d "out/HenSurf/${app_name}" ]; then
-            echo "Found ${app_name}, copying to HenSurf.app..."
-            cp -R "out/HenSurf/${app_name}" "out/HenSurf/HenSurf.app"
-            APP_COPIED=true
-            break
-        fi
-    done
+    if [ -d "out/HenSurf/${EXPECTED_CHROMIUM_APP_NAME}" ]; then
+        echo "Found ${EXPECTED_CHROMIUM_APP_NAME}, copying to HenSurf.app..."
+        cp -R "out/HenSurf/${EXPECTED_CHROMIUM_APP_NAME}" "out/HenSurf/HenSurf.app"
+        APP_COPIED=true
+    fi
 
     if [ "$APP_COPIED" = true ] && [ -d "out/HenSurf/HenSurf.app" ]; then
         # Update Info.plist
         PLIST_BUDDY="/usr/libexec/PlistBuddy"
         INFO_PLIST="out/HenSurf/HenSurf.app/Contents/Info.plist"
+        TARGET_MACOS_VERSION="10.15" # From hensurf.gn's mac_deployment_target
+        HENSURF_VERSION="1.0.0" # Placeholder, ideally from a version file
+        HENSURF_BUILD_NUMBER="1" # Placeholder for build number
+
         if [ -f "$PLIST_BUDDY" ] && [ -f "$INFO_PLIST" ]; then
+            echo "Updating Info.plist at: $INFO_PLIST"
+            # Set Bundle Name (typically app name without .app)
             "$PLIST_BUDDY" -c "Set :CFBundleName HenSurf" "$INFO_PLIST" 2>/dev/null || echo "Warning: Failed to set CFBundleName"
+            # Set Display Name (shown in Finder)
             "$PLIST_BUDDY" -c "Set :CFBundleDisplayName HenSurf Browser" "$INFO_PLIST" 2>/dev/null || echo "Warning: Failed to set CFBundleDisplayName"
+            # Set Bundle Identifier (unique ID)
             "$PLIST_BUDDY" -c "Set :CFBundleIdentifier com.hensurf.browser" "$INFO_PLIST" 2>/dev/null || echo "Warning: Failed to set CFBundleIdentifier"
-            echo "✅ HenSurf.app created and configured successfully!"
+            # Set Short Version String (marketing version)
+            "$PLIST_BUDDY" -c "Set :CFBundleShortVersionString $HENSURF_VERSION" "$INFO_PLIST" 2>/dev/null || echo "Warning: Failed to set CFBundleShortVersionString"
+            # Set Bundle Version (build number)
+            "$PLIST_BUDDY" -c "Set :CFBundleVersion $HENSURF_BUILD_NUMBER" "$INFO_PLIST" 2>/dev/null || echo "Warning: Failed to set CFBundleVersion"
+            # Set Minimum System Version
+            "$PLIST_BUDDY" -c "Set :LSMinimumSystemVersion $TARGET_MACOS_VERSION" "$INFO_PLIST" 2>/dev/null || echo "Warning: Failed to set LSMinimumSystemVersion"
+            # Set Icon File
+            "$PLIST_BUDDY" -c "Set :CFBundleIconFile app.icns" "$INFO_PLIST" 2>/dev/null || echo "Warning: Failed to set CFBundleIconFile"
+            # CFBundleExecutable should already be set correctly to 'Chromium' from the source app.
+            echo "✅ HenSurf.app bundle created and Info.plist configured successfully!"
         else
-            echo "⚠️  PlistBuddy or Info.plist not found. Cannot customize app bundle."
+            echo "⚠️  PlistBuddy tool ($PLIST_BUDDY) or Info.plist ($INFO_PLIST) not found. Cannot customize app bundle."
+            echo "   Expected Info.plist at: out/HenSurf/HenSurf.app/Contents/Info.plist"
         fi
     else
-        echo "⚠️  Could not find a base Chrome app bundle (Chromium.app, Google Chrome.app, or Chrome.app) in out/HenSurf/ to create HenSurf.app."
+        echo "⚠️  Could not find the expected base app bundle '${EXPECTED_CHROMIUM_APP_NAME}' in out/HenSurf/ to create HenSurf.app."
         echo "   The raw 'chrome' binary should still be available."
     fi
 

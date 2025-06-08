@@ -1,0 +1,37 @@
+#!/bin/bash
+echo "Mock autoninja: Called with $*" >> /tmp/autoninja_calls.log
+config_dir=""
+target=""
+if [[ "$1" == "-C" ]]; then
+  config_dir="$2"
+  target="$3"
+else
+  target="$1" # If no -C, first arg is target
+fi
+echo "Mock autoninja: Simulating build for target '$target' in config dir '$config_dir'" >> /tmp/autoninja_calls.log
+
+# Simulate creating some output
+if [[ -n "$config_dir" && "$target" == "chrome" ]]; then
+    # Check OSTYPE by calling the sw_vers mock to be more realistic for macOS check
+    # For simplicity in mock, directly check if OSTYPE var is set to darwin from calling env
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # Create the .app directory structure
+        app_bundle_dir="$config_dir/Chromium.app" # Base .app directory
+        app_exe_dir="$app_bundle_dir/Contents/MacOS"
+        app_res_dir="$app_bundle_dir/Contents/Resources"
+        mkdir -p "$app_exe_dir"
+        mkdir -p "$app_res_dir"
+        touch "$app_exe_dir/Chromium" # The executable
+        # Create a dummy Info.plist that PlistBuddy will modify
+        echo "<plist version=\"1.0\"><dict></dict></plist>" > "$app_bundle_dir/Contents/Info.plist"
+        echo "Mock autoninja: Created dummy app structure $app_bundle_dir" >> /tmp/autoninja_calls.log
+    fi
+fi
+
+if [[ -n "$config_dir" && "$target" == "mini_installer" ]]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then # Simpler check, relying on exported OSTYPE
+        dmg_file="$config_dir/HenSurf.dmg"
+        touch "$dmg_file"
+        echo "Mock autoninja: Created dummy DMG $dmg_file" >> /tmp/autoninja_calls.log
+    fi
+fi

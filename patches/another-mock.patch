@@ -1,0 +1,5 @@
+--- a/dummy_file2.txt
++++ b/dummy_file2.txt
+@@ -1,1 +1,1 @@
+-old line
++new line

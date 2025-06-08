@@ -1,0 +1,4 @@
+#!/bin/bash
+echo "Mock patch: Called with $*" >> /tmp/patch_calls.log
+# patch -p1 < ../../patches/some.patch
+echo "Mock patch: Simulating application of patch $4 using method $1 $2 $3" >> /tmp/patch_calls.log

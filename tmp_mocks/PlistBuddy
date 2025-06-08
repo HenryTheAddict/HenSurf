@@ -1,0 +1,10 @@
+#!/bin/bash
+echo "Mock PlistBuddy: Called with: $*" >> /tmp/plistbuddy_calls.log
+# Simulate file modification by touching it if it's a Set command
+# The last argument is usually the plist file
+plist_file="${@: -1}" # Get the last argument
+if [[ "$1" == "-c" && "$2" =~ ^Set.* && -n "$plist_file" ]]; then
+  echo "Mock PlistBuddy: Simulating Set command on $plist_file" >> /tmp/plistbuddy_calls.log
+  mkdir -p "$(dirname "$plist_file")" # Ensure directory exists
+  touch "$plist_file" # Simulate modification or creation
+fi

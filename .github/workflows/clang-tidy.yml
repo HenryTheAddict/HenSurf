@@ -10,7 +10,6 @@ jobs:
   analyze_cpp:
     runs-on: ubuntu-latest
     env:
-      CHROMIUM_VERSION_TAG: 'YOUR_TARGET_CHROMIUM_TAG_OR_HASH'
       DEPOT_TOOLS_DIR: ${{ github.workspace }}/depot_tools
 
     steps:
@@ -27,21 +26,16 @@ jobs:
       - name: Fetch pinned Chromium version
         working-directory: ${{ github.workspace }}
         run: |
-          echo "Fetching Chromium version: ${{ env.CHROMIUM_VERSION_TAG }}"
-          if [ "${{ env.CHROMIUM_VERSION_TAG }}" == "YOUR_TARGET_CHROMIUM_TAG_OR_HASH" ]; then
-            echo "Error: CHROMIUM_VERSION_TAG is not set. Please replace YOUR_TARGET_CHROMIUM_TAG_OR_HASH with a valid Chromium tag/hash."
-            exit 1
-          fi
+          echo "Fetching latest Chromium source..."
 
           mkdir chromium && cd chromium
 
           # IMPORTANT: Replace YOUR_TARGET_CHROMIUM_URL_WITH_SOLUTION if not using the main chromium/src.git
           # For most cases, "https://chromium.googlesource.com/chromium/src.git" is correct.
-          # The @${{ env.CHROMIUM_VERSION_TAG }} pins the version.
           gclient config --spec 'solutions = [
             {
               "name": "src",
-              "url": "https://chromium.googlesource.com/chromium/src.git@" + "${{ env.CHROMIUM_VERSION_TAG }}",
+              "url": "https://chromium.googlesource.com/chromium/src.git",
               "managed": False,
               "custom_deps": {},
               "custom_vars": {
@@ -61,7 +55,7 @@ jobs:
 
           # Using --no-history, --nohooks, -D (delete unversioned trees) to speed up and reduce size.
           # -j8 for parallel jobs, adjust based on runner capabilities.
-          gclient sync --no-history --nohooks -j8 --revision ${{ env.CHROMIUM_VERSION_TAG }} -D --with_branch_heads --with_tags
+          gclient sync --no-history --nohooks -j8 -D --with_branch_heads --with_tags
 
       - name: Run gclient runhooks
         working-directory: ${{ github.workspace }}/chromium

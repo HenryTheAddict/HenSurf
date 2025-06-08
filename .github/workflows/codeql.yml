@@ -18,7 +18,6 @@ jobs:
       security-events: write
 
     env:
-      CHROMIUM_VERSION_TAG: 'YOUR_TARGET_CHROMIUM_TAG_OR_HASH'
       DEPOT_TOOLS_DIR: ${{ github.workspace }}/depot_tools
 
     steps:
@@ -32,22 +31,15 @@ jobs:
         git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git ${{ env.DEPOT_TOOLS_DIR }}
         echo "${{ env.DEPOT_TOOLS_DIR }}" >> $GITHUB_PATH
 
-    - name: Check CHROMIUM_VERSION_TAG
-      run: |
-        if [ "${{ env.CHROMIUM_VERSION_TAG }}" == "YOUR_TARGET_CHROMIUM_TAG_OR_HASH" ]; then
-          echo "Error: You must set the CHROMIUM_VERSION_TAG environment variable to a specific Chromium Git tag or commit hash."
-          exit 1
-        fi
-
     - name: Fetch pinned Chromium version
       working-directory: ${{ github.workspace }}
       run: |
-        echo "Fetching Chromium version: ${{ env.CHROMIUM_VERSION_TAG }}"
+        echo "Fetching latest Chromium source..."
         mkdir chromium && cd chromium
         gclient config --spec 'solutions = [
           {
             "name": "src",
-            "url": "https://chromium.googlesource.com/chromium/src.git@" + "${{ env.CHROMIUM_VERSION_TAG }}",
+            "url": "https://chromium.googlesource.com/chromium/src.git",
             "managed": False,
             "custom_deps": {},
             "custom_vars": {
@@ -64,7 +56,7 @@ jobs:
         ]
         target_os = ["linux"]
         cache_dir = "${{ github.workspace }}/cache_dir"'
-        gclient sync --no-history --nohooks -j8 --revision ${{ env.CHROMIUM_VERSION_TAG }} -D --with_branch_heads --with_tags
+        gclient sync --no-history --nohooks -j8 -D --with_branch_heads --with_tags
 
     - name: Run gclient runhooks
       working-directory: ${{ github.workspace }}/chromium

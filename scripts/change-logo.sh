@@ -60,13 +60,15 @@ echo "Step 3: Updating branding files..."
 echo "Updating version information..."
 if [ -f "chromium/src/chrome/VERSION" ]; then
     # Update the version file to show HenSurf branding
-    sed -i.bak 's/Chromium/HenSurf Browser/g' chromium/src/chrome/VERSION 2>/dev/null || true
+    sed -i.bak 's/Chromium/HenSurf Browser/g' chromium/src/chrome/VERSION
+    rm -f chromium/src/chrome/VERSION.bak
 fi
 
 # Update user agent
 echo "Updating user agent..."
 if [ -f "chromium/src/content/common/user_agent.cc" ]; then
-    sed -i.bak 's/Chrome/HenSurf/g' chromium/src/content/common/user_agent.cc 2>/dev/null || true
+    sed -i.bak 's/Chrome/HenSurf/g' chromium/src/content/common/user_agent.cc
+    rm -f chromium/src/content/common/user_agent.cc.bak
 fi
 
 echo

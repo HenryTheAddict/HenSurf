@@ -43,28 +43,31 @@ fi
 
 # Test 2: Check default search engine
 echo "🔍 Test 2: Default search engine test..."
-./chromium/src/out/HenSurf/chrome \
+timeout 6s ./chromium/src/out/HenSurf/chrome \
     --user-data-dir="$TEST_DIR" \
     --no-first-run \
     --headless \
     --dump-dom \
     --virtual-time-budget=2000 \
-    "chrome://settings/search" > "$TEST_DIR/search_test.html" 2>&1 &
+    "chrome://settings/search" > "$TEST_DIR/search_test.html" 2>&1
+SEARCH_EXIT_CODE=$?
 
-SEARCH_PID=$!
-sleep 3
-kill $SEARCH_PID 2>/dev/null || true
-wait $SEARCH_PID 2>/dev/null || true
+if [ $SEARCH_EXIT_CODE -eq 124 ]; then
+    echo "ℹ️ Search engine test browser process timed out (expected for dump-dom)."
+elif [ $SEARCH_EXIT_CODE -ne 0 ]; then
+    echo "⚠️ Search engine test browser process exited with error code $SEARCH_EXIT_CODE."
+fi
 
 if grep -q -i "duckduckgo\|duck" "$TEST_DIR/search_test.html" 2>/dev/null; then
     echo "✅ Default search engine test passed (DuckDuckGo detected)"
 else
     echo "⚠️  Default search engine test inconclusive (may need manual verification)"
+    cat "$TEST_DIR/search_test.html"
 fi
 
 # Test 3: Check for Google services (should be absent)
 echo "🚫 Test 3: Google services removal test..."
-./chromium/src/out/HenSurf/chrome \
+timeout 6s ./chromium/src/out/HenSurf/chrome \
     --user-data-dir="$TEST_DIR" \
     --no-first-run \
     --headless \
@@ -72,60 +75,69 @@ echo "🚫 Test 3: Google services removal test..."
     --log-level=0 \
     --dump-dom \
     --virtual-time-budget=2000 \
-    "chrome://settings/" > "$TEST_DIR/settings_test.html" 2>&1 &
+    "chrome://settings/" > "$TEST_DIR/settings_test.html" 2>&1
+SETTINGS_EXIT_CODE=$?
 
-SETTINGS_PID=$!
-sleep 3
-kill $SETTINGS_PID 2>/dev/null || true
-wait $SETTINGS_PID 2>/dev/null || true
+if [ $SETTINGS_EXIT_CODE -eq 124 ]; then
+    echo "ℹ️ Settings page test browser process timed out (expected for dump-dom)."
+elif [ $SETTINGS_EXIT_CODE -ne 0 ]; then
+    echo "⚠️ Settings page test browser process exited with error code $SETTINGS_EXIT_CODE."
+fi
 
 # Check for absence of Google-related terms
 if grep -q -i "google account\|sync.*google\|sign.*in.*google" "$TEST_DIR/settings_test.html" 2>/dev/null; then
     echo "⚠️  Google services may still be present (manual verification needed)"
+    cat "$TEST_DIR/settings_test.html"
 else
     echo "✅ Google services removal test passed"
 fi
 
 # Test 4: Privacy settings
 echo "🔒 Test 4: Privacy settings test..."
-./chromium/src/out/HenSurf/chrome \
+timeout 6s ./chromium/src/out/HenSurf/chrome \
     --user-data-dir="$TEST_DIR" \
     --no-first-run \
     --headless \
     --dump-dom \
     --virtual-time-budget=2000 \
-    "chrome://settings/privacy" > "$TEST_DIR/privacy_test.html" 2>&1 &
+    "chrome://settings/privacy" > "$TEST_DIR/privacy_test.html" 2>&1
+PRIVACY_EXIT_CODE=$?
 
-PRIVACY_PID=$!
-sleep 3
-kill $PRIVACY_PID 2>/dev/null || true
-wait $PRIVACY_PID 2>/dev/null || true
+if [ $PRIVACY_EXIT_CODE -eq 124 ]; then
+    echo "ℹ️ Privacy settings test browser process timed out (expected for dump-dom)."
+elif [ $PRIVACY_EXIT_CODE -ne 0 ]; then
+    echo "⚠️ Privacy settings test browser process exited with error code $PRIVACY_EXIT_CODE."
+fi
 
 if [ -f "$TEST_DIR/privacy_test.html" ] && [ -s "$TEST_DIR/privacy_test.html" ]; then
     echo "✅ Privacy settings accessible"
 else
     echo "⚠️  Privacy settings test inconclusive"
+    cat "$TEST_DIR/privacy_test.html"
 fi
 
 # Test 5: Extension support
 echo "🧩 Test 5: Extension support test..."
-./chromium/src/out/HenSurf/chrome \
+timeout 6s ./chromium/src/out/HenSurf/chrome \
     --user-data-dir="$TEST_DIR" \
     --no-first-run \
     --headless \
     --dump-dom \
     --virtual-time-budget=2000 \
-    "chrome://extensions/" > "$TEST_DIR/extensions_test.html" 2>&1 &
+    "chrome://extensions/" > "$TEST_DIR/extensions_test.html" 2>&1
+EXT_EXIT_CODE=$?
 
-EXT_PID=$!
-sleep 3
-kill $EXT_PID 2>/dev/null || true
-wait $EXT_PID 2>/dev/null || true
+if [ $EXT_EXIT_CODE -eq 124 ]; then
+    echo "ℹ️ Extensions page test browser process timed out (expected for dump-dom)."
+elif [ $EXT_EXIT_CODE -ne 0 ]; then
+    echo "⚠️ Extensions page test browser process exited with error code $EXT_EXIT_CODE."
+fi
 
 if [ -f "$TEST_DIR/extensions_test.html" ] && [ -s "$TEST_DIR/extensions_test.html" ]; then
     echo "✅ Extensions page accessible"
 else
     echo "⚠️  Extensions test inconclusive"
+    cat "$TEST_DIR/extensions_test.html"
 fi
 
 # Test 6: Version information
@@ -141,23 +153,26 @@ fi
 
 # Test 7: Network connectivity test
 echo "🌐 Test 7: Network connectivity test..."
-./chromium/src/out/HenSurf/chrome \
+timeout 8s ./chromium/src/out/HenSurf/chrome \
     --user-data-dir="$TEST_DIR" \
     --no-first-run \
     --headless \
     --dump-dom \
     --virtual-time-budget=5000 \
-    "https://duckduckgo.com" > "$TEST_DIR/network_test.html" 2>&1 &
+    "https://duckduckgo.com" > "$TEST_DIR/network_test.html" 2>&1
+NET_EXIT_CODE=$?
 
-NET_PID=$!
-sleep 5
-kill $NET_PID 2>/dev/null || true
-wait $NET_PID 2>/dev/null || true
+if [ $NET_EXIT_CODE -eq 124 ]; then
+    echo "ℹ️ Network test browser process timed out (expected for dump-dom)."
+elif [ $NET_EXIT_CODE -ne 0 ]; then
+    echo "⚠️ Network test browser process exited with error code $NET_EXIT_CODE."
+fi
 
 if grep -q -i "duckduckgo\|search" "$TEST_DIR/network_test.html" 2>/dev/null; then
     echo "✅ Network connectivity test passed"
 else
     echo "⚠️  Network connectivity test failed (may be network issue)"
+    cat "$TEST_DIR/network_test.html"
 fi
 
 # Test 8: Default homepage test (should be about:blank)

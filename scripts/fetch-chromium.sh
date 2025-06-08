@@ -11,27 +11,38 @@ echo "🌐 Fetching Chromium source code for HenSurf..."
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." &>/dev/null && pwd)
 
-# Try to find depot_tools, assuming it's adjacent to the project root
-# This matches the structure set up by install-deps.sh
-DEPOT_TOOLS_DIR_GUESS_1="$PROJECT_ROOT/../depot_tools"
-# Fallback if it's inside the project root (less common for chromium builds)
-DEPOT_TOOLS_DIR_GUESS_2="$PROJECT_ROOT/depot_tools"
+# depot_tools path logic:
+# 1. Check DEPOT_TOOLS_PATH environment variable
+# 2. Fallback to common locations ($PROJECT_ROOT/../depot_tools or $PROJECT_ROOT/depot_tools)
 
 DEPOT_TOOLS_DIR=""
-if [ -d "$DEPOT_TOOLS_DIR_GUESS_1" ]; then
-    DEPOT_TOOLS_DIR=$(cd "$DEPOT_TOOLS_DIR_GUESS_1" &>/dev/null && pwd) # Get absolute path
-elif [ -d "$DEPOT_TOOLS_DIR_GUESS_2" ]; then
-    DEPOT_TOOLS_DIR=$(cd "$DEPOT_TOOLS_DIR_GUESS_2" &>/dev/null && pwd) # Get absolute path
+if [ -n "$DEPOT_TOOLS_PATH" ] && [ -d "$DEPOT_TOOLS_PATH" ]; then
+    DEPOT_TOOLS_DIR=$(cd "$DEPOT_TOOLS_PATH" &>/dev/null && pwd) # Get absolute path
+    echo "ℹ️ Using depot_tools from DEPOT_TOOLS_PATH environment variable: $DEPOT_TOOLS_DIR"
 else
-    echo "❌ depot_tools not found in expected locations:"
-    echo "   Expected: $DEPOT_TOOLS_DIR_GUESS_1"
-    echo "   Or:       $DEPOT_TOOLS_DIR_GUESS_2"
-    echo "   Please ensure depot_tools is cloned correctly (usually adjacent to the HenSurf project directory)."
-    echo "   And that you have run ./scripts/install-deps.sh first."
-    exit 1
+    # Try to find depot_tools, assuming it's adjacent to the project root
+    DEPOT_TOOLS_DIR_GUESS_1="$PROJECT_ROOT/../depot_tools"
+    # Fallback if it's inside the project root
+    DEPOT_TOOLS_DIR_GUESS_2="$PROJECT_ROOT/depot_tools"
+
+    if [ -d "$DEPOT_TOOLS_DIR_GUESS_1" ]; then
+        DEPOT_TOOLS_DIR=$(cd "$DEPOT_TOOLS_DIR_GUESS_1" &>/dev/null && pwd)
+        echo "ℹ️ Using depot_tools from default location (adjacent to project): $DEPOT_TOOLS_DIR"
+    elif [ -d "$DEPOT_TOOLS_DIR_GUESS_2" ]; then
+        DEPOT_TOOLS_DIR=$(cd "$DEPOT_TOOLS_DIR_GUESS_2" &>/dev/null && pwd)
+        echo "ℹ️ Using depot_tools from fallback location (inside project): $DEPOT_TOOLS_DIR"
+    else
+        echo "❌ depot_tools not found."
+        echo "   Checked DEPOT_TOOLS_PATH environment variable (was not set or invalid)."
+        echo "   Checked default location: $DEPOT_TOOLS_DIR_GUESS_1"
+        echo "   Checked fallback location: $DEPOT_TOOLS_DIR_GUESS_2"
+        echo "   Please ensure depot_tools is correctly installed and accessible,"
+        echo "   or set the DEPOT_TOOLS_PATH environment variable to its location."
+        echo "   Consider running ./scripts/install-deps.sh first if depot_tools is not yet installed."
+        exit 1
+    fi
 fi
 
-echo "Found depot_tools at: $DEPOT_TOOLS_DIR"
 export PATH="$DEPOT_TOOLS_DIR:$PATH"
 echo "🔧 Added depot_tools to PATH for this session."
 

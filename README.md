@@ -99,6 +99,20 @@ HenSurf uses custom build configurations to remove unwanted features:
 - **Privacy First**: Enhanced privacy settings enabled by default
 - **Minimal Telemetry**: Only essential crash reporting (can be disabled)
 
+## Troubleshooting
+
+If you encounter issues while building or running HenSurf, here are some common troubleshooting steps:
+
+*   **Check Dependencies**: Ensure all build requirements listed in the "Build Requirements" section are installed correctly. You can try re-running the dependency installation script:
+    ```bash
+    ./scripts/install-deps.sh
+    ```
+*   **Clean Build Directory**: Sometimes, previous build artifacts can cause issues. Clean your build directory and try again. *Note: Specific commands to clean the build directory depend on the Chromium build process and might involve deleting the `out` directory or similar. Refer to Chromium build documentation if unsure.*
+*   **Check Logs**: Build and runtime logs can provide valuable information about what went wrong. Look for error messages in the console output. Chromium build logs are typically found in the build output directory (e.g., `out/Release/build.log`).
+*   **Disk Space**: Ensure you have sufficient free disk space (at least 100GB recommended) as Chromium's source and build files are very large.
+*   **Memory Usage**: Building Chromium is memory-intensive. If the build fails with errors related to memory, ensure you have enough RAM (16GB+ recommended) and close other memory-heavy applications.
+*   **Consult Chromium Documentation**: For issues related to the underlying Chromium build system, the official [Chromium build documentation](https://www.chromium.org/developers/how-tos/get-the-code/) can be a helpful resource.
+
 ## Contributing
 
 1. Fork the repository
@@ -110,7 +124,7 @@ HenSurf uses custom build configurations to remove unwanted features:
 ## License
 
 HenSurf is based on Chromium and follows the same BSD-style license.
-See LICENSE file for details.
+See the LICENSE file for details.
 
 ## Disclaimer
 

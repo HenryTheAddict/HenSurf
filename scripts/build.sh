@@ -344,11 +344,11 @@ log_info "   Target output directory for gn: $FINAL_OUTPUT_DIR" | tee -a "$BUILD
 # If args.gn already exists, it will be overwritten with these command-line args.
 gn gen "$FINAL_OUTPUT_DIR" --args="$GN_ARGS_STRING_WITH_TARGETS" 2>&1 | tee -a "$BUILD_LOG_FILE"
 GN_GEN_STATUS=${PIPESTATUS[0]} # Get status of gn gen command
-
-log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished gn generation." | tee -a "$BUILD_LOG_FILE"
-
+if [ "$GN_GEN_STATUS" -ne 0 ]; then
+    log_error "❌ gn gen failed with status $GN_GEN_STATUS." | tee -a "$BUILD_LOG_FILE"
     exit 1
 fi
+log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished gn generation." | tee -a "$BUILD_LOG_FILE"
 
 # Show build configuration from the generated output directory
 log_info "📋 Build configuration for $FINAL_OUTPUT_DIR (from gn args $FINAL_OUTPUT_DIR --list --short):" | tee -a "$BUILD_LOG_FILE"
@@ -384,15 +384,15 @@ log_info "Ninja will now show detailed build progress (e.g., [X/Y] files compile
 
 autoninja -C "$FINAL_OUTPUT_DIR" chrome 2>&1 | tee -a "$BUILD_LOG_FILE"
 CHROME_BUILD_STATUS=${PIPESTATUS[0]} # Get status of autoninja command
-
+if [ "$CHROME_BUILD_STATUS" -ne 0 ]; then
+    log_error "❌ autoninja chrome build failed with status $CHROME_BUILD_STATUS." | tee -a "$BUILD_LOG_FILE"
+    exit 1
+fi
 log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished main browser build." | tee -a "$BUILD_LOG_FILE"
 
 if command_exists "ccache"; then
     log_info "Final ccache statistics after main browser build:" | tee -a "$BUILD_LOG_FILE"
     ccache -s 2>&1 | tee -a "$BUILD_LOG_FILE"
-fi
-
-    exit 1
 fi
 
 # Build additional components

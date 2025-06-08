@@ -1,0 +1,54 @@
+[
+    {
+        "type": "convention",
+        "module": "run_all_tests",
+        "obj": "",
+        "line": 1,
+        "column": 0,
+        "endLine": null,
+        "endColumn": null,
+        "path": "scripts/run_all_tests.py",
+        "symbol": "docstring-first-line-empty",
+        "message": "First line empty in module docstring",
+        "message-id": "C0199"
+    },
+    {
+        "type": "convention",
+        "module": "run_all_tests",
+        "obj": "get_env_with_mock_tools",
+        "line": 31,
+        "column": 0,
+        "endLine": 31,
+        "endColumn": 27,
+        "path": "scripts/run_all_tests.py",
+        "symbol": "docstring-first-line-empty",
+        "message": "First line empty in function docstring",
+        "message-id": "C0199"
+    },
+    {
+        "type": "convention",
+        "module": "run_all_tests",
+        "obj": "run_command",
+        "line": 48,
+        "column": 0,
+        "endLine": 48,
+        "endColumn": 15,
+        "path": "scripts/run_all_tests.py",
+        "symbol": "docstring-first-line-empty",
+        "message": "First line empty in function docstring",
+        "message-id": "C0199"
+    },
+    {
+        "type": "convention",
+        "module": "run_all_tests",
+        "obj": "main",
+        "line": 261,
+        "column": 0,
+        "endLine": 261,
+        "endColumn": 8,
+        "path": "scripts/run_all_tests.py",
+        "symbol": "docstring-first-line-empty",
+        "message": "First line empty in function docstring",
+        "message-id": "C0199"
+    }
+]

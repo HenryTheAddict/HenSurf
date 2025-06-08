@@ -38,7 +38,7 @@ def get_env_with_mock_tools():
     """
     env = os.environ.copy()
     current_path = env.get('PATH', '')
-    env['PATH'] = MOCK_TOOLS_DIR + os.pathsep + current_path
+    env['PATH'] = f"{MOCK_TOOLS_DIR}{os.pathsep}{current_path}"
     # Add depot_tools_mock if it contains other necessary tools like gclient
     # (though not used by this script directly)
     depot_tools_mock_dir = os.path.join(PROJECT_ROOT, 'depot_tools_mock')
@@ -66,13 +66,13 @@ def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None):
     try:
         # If env is None, the current environment is inherited, which is usually what we want
         # unless we need to specifically add mock tools to PATH.
-        process_env = env if env else os.environ.copy()
 
         process = subprocess.run(
             cmd_list, cwd=working_dir, capture_output=True, text=True,
-
-        stdout_lines = process.stdout.splitlines()
-        stderr_lines = process.stderr.splitlines()
+            check=True, timeout=timeout_seconds, env=env or os.environ.copy()
+        )
+        stdout_lines = process.stdout.splitlines() if process.stdout else []
+        stderr_lines = process.stderr.splitlines() if process.stderr else []
 
         print("STDOUT:")
         for line in stdout_lines:
@@ -82,31 +82,187 @@ def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None):
             print("STDERR:")
             for line in stderr_lines:
                 print(line)
+        # If check=True is used, CalledProcessError will be raised for non-zero exit codes.
+        # The stdout/stderr can be accessed from the exception object.
+        return True # Explicitly return True on command success (if check=True and no exception)
 
     except subprocess.CalledProcessError as e:
-        # This block handles non-zero exit codes when check=True
         print(f"Command FAILED with exit code {e.returncode}.")
+        # stdout and stderr are attributes of the exception object
+        stdout_from_error = e.stdout.splitlines() if e.stdout else []
+        stderr_from_error = e.stderr.splitlines() if e.stderr else []
+
         print("STDOUT (from CalledProcessError):")
-        for line in e.stdout.splitlines(): # stdout may be bytes, decode if necessary
+        for line in stdout_from_error:
             print(line)
         print("STDERR (from CalledProcessError):")
-        for line in e.stderr.splitlines(): # stderr may be bytes, decode if necessary
+        for line in stderr_from_error:
             print(line)
-        return False # Explicitly return False on command failure
+        return False
     except subprocess.TimeoutExpired:
         print(f"Command timed out after {timeout_seconds} seconds.")
         return False
     except FileNotFoundError as e:
         print(f"Error: Command not found: {cmd_list[0]}. Details: {e}")
         return False
-    except OSError as e:
+    except OSError as e: # Catching OSError which is a base for many execution errors
         print(f"Error executing command: {cmd_list[0]}. Details: {e}")
         return False
-    except Exception as e: # General fallback
+    except Exception as e: # pylint: disable=broad-except
         print(f"An unexpected error occurred while running command: {cmd_list[0]}. Details: {e}")
         return False
 
+
+def _run_custom_tests(args, mock_env):
+    """Runs custom test scripts (e.g., test-hensurf.sh/ps1)."""
+    print("\n--- Running Custom Test Scripts ---")
+    custom_script_path = ""
+    cmd = []
+    script_dir = os.path.join(PROJECT_ROOT, 'scripts')
+    current_results = {}
+    success_flag = True
+
+    if args.platform in ['linux', 'darwin']:
+        custom_script_path = os.path.join(script_dir, 'test-hensurf.sh')
+        try:
+            # pylint: disable=C0321
+            os.chmod(custom_script_path, 0o755)
+        except OSError as e:
+            print(f"Warning: Could not chmod {custom_script_path}: {e}")
+        cmd = ['bash', custom_script_path]
+    elif args.platform == 'windows':
+        custom_script_path = os.path.join(script_dir, 'test-hensurf.ps1')
+        cmd = [
+            'powershell.exe', '-ExecutionPolicy', 'Bypass',
+            '-File', custom_script_path
+        ]
+
+    if cmd and os.path.exists(custom_script_path):
+        success = run_command(
+            cmd, working_dir=PROJECT_ROOT,
+            timeout_seconds=args.test_launcher_timeout, env=mock_env
+        )
+        current_results['custom_tests'] = success
+        if not success:
+            success_flag = False
+    else:
+        print(f"Custom test script not found for {args.platform} at {custom_script_path}")
+        current_results['custom_tests'] = False
+        success_flag = False
+    return success_flag, current_results
+
+
+def _build_chromium_suites(args, mock_env):
+    """Builds specified Chromium test suites."""
+    print("\n--- Building Chromium Test Suites ---")
+    current_results = {}
+    success_flag = True
+    for suite in args.build_chromium_tests:
+        print(f"Building: {suite}")
+        build_cmd = ['autoninja', '-C', args.output_dir, suite]
+        success = run_command(
+            build_cmd, working_dir=HENSURF_SRC_DIR, env=mock_env
+        )
+        current_results[f'build_{suite}'] = success
+        if not success:
+            print(f"Stopping early because build of {suite} failed.")
+            success_flag = False
+            # Potentially break here if one build failure means we can't proceed
+            # For now, it will try all builds and report all failures.
+    return success_flag, current_results
+
+
+def _run_chromium_suites(args, mock_env):
+    """Runs specified Chromium test suites."""
+    print("\n--- Running Chromium Test Suites ---")
+    current_results = {}
+    success_flag = True
+    for test_spec in args.run_chromium_tests:
+        if ':' in test_spec:
+            suite, specific_gtest_filter = test_spec.split(':', 1)
+        else:
+            suite, specific_gtest_filter = test_spec, args.gtest_filter
+        result_key = f'run_{suite}'
+
+        executable_path = os.path.join(args.output_dir, suite)
+        if args.platform == 'windows':
+            executable_path += ".exe"
+
+        if not os.path.exists(executable_path):
+            print(
+                f"Test executable not found: {executable_path}. "
+                f"Skipping {suite}."
+            )
+            current_results[result_key] = False
+            success_flag = False
+            continue
+
+        test_cmd = [executable_path]
+        if specific_gtest_filter:
+            test_cmd.append(f'--gtest_filter={specific_gtest_filter}')
+
+        test_cmd.append('--test-launcher-bot-mode')
+        test_cmd.append(
+            f'--test-launcher-timeout={args.test_launcher_timeout * 1000}'
+        )
+        if args.no_sandbox:
+            test_cmd.append('--no-sandbox')
+
+        final_run_cmd = []
+        if args.platform in ['linux', 'darwin'] and suite in [
+            'browser_tests', 'unit_tests'
+        ]:
+            xvfb_check_process = subprocess.run(
+                ['which', 'xvfb-run'], capture_output=True, text=True, check=False
+            )
+            if xvfb_check_process.returncode == 0:
+                final_run_cmd.extend(['xvfb-run', '-a'])
+                final_run_cmd.extend(test_cmd)
+            else:
+                print(
+                    "xvfb-run not found, attempting to run test without it. "
+                    "May fail if UI is needed."
+                )
+                final_run_cmd.extend(test_cmd)
+        else:
+            final_run_cmd.extend(test_cmd)
+
+        success = run_command(
+            final_run_cmd, working_dir=HENSURF_SRC_DIR,
+            timeout_seconds=args.test_launcher_timeout + 60, env=mock_env
+        )
+        current_results[result_key] = success
+        if not success:
+            success_flag = False
+    return success_flag, current_results
+
+
+def _summarize_and_exit(results, overall_success):
+    """Prints test summary and exits with appropriate code."""
+    print("\n--- Test Summary ---")
+    if not results:
+        print("No tests were run.")
+    else:
+        for test_name, passed in results.items():
+            status = "✅ PASSED" if passed else "❌ FAILED"
+            print(f"{test_name}: {status}")
+
+    if overall_success and results:
+        print("\n🎉 All executed tests passed!")
+        sys.exit(0)
+    elif not results:
+        print("No tests were specified or run.")
+        sys.exit(0)
+    else:
+        print("\n⚠️ Some tests failed.")
+        sys.exit(1)
+
+
 def main():
+    """
+    Main function to parse arguments and run tests.
+    Orchestrates the test execution process based on command-line arguments.
+    """
     desc = "Test Runner"
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument(
@@ -154,143 +310,44 @@ def main():
     mock_env = get_env_with_mock_tools()
     print(f"Using PATH: {mock_env.get('PATH')}")
 
-
     results = {}
     overall_success = True
 
-    # 1. Run Custom Test Scripts (test-hensurf.sh/ps1)
+    # 1. Run Custom Test Scripts
     if not args.skip_custom_scripts:
-        print("\n--- Running Custom Test Scripts ---")
-        custom_script_path = ""
-        cmd = []
-        # Scripts are in PROJECT_ROOT/scripts/
-        script_dir = os.path.join(PROJECT_ROOT, 'scripts')
-
-        if args.platform in ['linux', 'darwin']:
-            custom_script_path = os.path.join(script_dir, 'test-hensurf.sh')
-            # Ensure it's executable - this might fail in sandbox if not already set
-            try:
-                os.chmod(custom_script_path, 0o755)
-            except OSError as e:
-                print(f"Warning: Could not chmod {custom_script_path}: {e}")
-
-            cmd = ['bash', custom_script_path]
-        elif args.platform == 'windows':
-            custom_script_path = os.path.join(script_dir, 'test-hensurf.ps1')
-            cmd = [
-                'powershell.exe', '-ExecutionPolicy', 'Bypass',
-                '-File', custom_script_path
-            ]
-
-        if cmd and os.path.exists(custom_script_path):
-            # Custom scripts are run from the project root,
-            # as they might have relative paths like `chromium/src/...`
-            success = run_command(
-                cmd, working_dir=PROJECT_ROOT,
-                timeout_seconds=args.test_launcher_timeout, env=mock_env
-            )
-            results['custom_tests'] = success
-            if not success: overall_success = False
-        else:
-            print(f"Custom test script not found for {args.platform} at {custom_script_path}")
-            results['custom_tests'] = False
+        custom_success, custom_results = _run_custom_tests(args, mock_env)
+        results.update(custom_results)
+        if not custom_success:
             overall_success = False
     else:
         print("\n--- Skipping Custom Test Scripts ---")
 
     # 2. Build Chromium Test Suites (Optional)
     if args.build_chromium_tests:
-        print("\n--- Building Chromium Test Suites ---")
-        for suite in args.build_chromium_tests:
-            print(f"Building: {suite}")
-            build_cmd = ['autoninja', '-C', args.output_dir, suite]
-            # autoninja needs to run from src
-            success = run_command(
-                build_cmd, working_dir=HENSURF_SRC_DIR, env=mock_env
-            )
-            results[f'build_{suite}'] = success
-            if not success:
-                print(f"Stopping early because build of {suite} failed.")
-                overall_success = False
-                # Decide if to exit or continue based on requirements for real runs
+        build_success, build_results = _build_chromium_suites(args, mock_env)
+        results.update(build_results)
+        if not build_success:
+            overall_success = False
+            # If a build fails, we might not want to proceed to running tests.
+            # For now, the script will continue and try to run what it can.
     else:
         print("\n--- Skipping Build of Chromium Test Suites ---")
 
-
     # 3. Run Chromium Test Suites (Optional)
-    if args.run_chromium_tests:
-        print("\n--- Running Chromium Test Suites ---")
-        for test_spec in args.run_chromium_tests:
-            suite, specific_gtest_filter = test_spec.split(':', 1) if ':' in test_spec else (test_spec, args.gtest_filter)
-
-            executable_path = os.path.join(args.output_dir, suite)
-            if args.platform == 'windows':
-                executable_path += ".exe"
-
-            if not os.path.exists(executable_path):
-                print(
-                    f"Test executable not found: {executable_path}. "
-                    f"Skipping {suite}."
-                )
-                results[result_key] = False
-                overall_success = False
-                continue
-
-            test_cmd = [executable_path]
-            if specific_gtest_filter:
-                test_cmd.append(f'--gtest_filter={specific_gtest_filter}')
-
-            # Common flags for Chromium tests
-            test_cmd.append('--test-launcher-bot-mode')
-            # ms for test_launcher_timeout
-            test_cmd.append(
-                f'--test-launcher-timeout={args.test_launcher_timeout * 1000}'
-            )
-            if args.no_sandbox:
-                test_cmd.append('--no-sandbox')
-
-            final_run_cmd = []
-                )
-                if xvfb_check_process.returncode == 0:
-                    final_run_cmd.extend(['xvfb-run', '-a']) # Auto-servernum
-                    final_run_cmd.extend(test_cmd)
-                else:
-                    print(
-                        "xvfb-run not found, attempting to run test without it. "
-                        "May fail if UI is needed."
-                    )
-                    final_run_cmd.extend(test_cmd)
-            else:
-                final_run_cmd.extend(test_cmd)
-
-            # Tests are run from src dir typically, as they might load
-            # resources relative to it or out/
-            success = run_command(
-                final_run_cmd, working_dir=HENSURF_SRC_DIR,
-                timeout_seconds=args.test_launcher_timeout + 60, env=mock_env
-            )
-            results[result_key] = success
-            if not success: overall_success = False
+    # Only proceed if builds were successful or not attempted
+    if args.run_chromium_tests and (not args.build_chromium_tests or overall_success):
+        run_success, run_results = _run_chromium_suites(args, mock_env)
+        results.update(run_results)
+        if not run_success:
+            overall_success = False
+    elif args.run_chromium_tests and args.build_chromium_tests and not overall_success:
+        print("\n--- Skipping Run of Chromium Test Suites due to previous build failures ---")
     else:
         print("\n--- Skipping Run of Chromium Test Suites ---")
 
     # 4. Summarize Results
-    print("\n--- Test Summary ---")
-    if not results:
-        print("No tests were run.")
-    else:
-        for test_name, passed in results.items():
-            status = "✅ PASSED" if passed else "❌ FAILED"
-            print(f"{test_name}: {status}")
+    _summarize_and_exit(results, overall_success)
 
-    if overall_success and results: # Ensure some tests actually ran
-        print("\n🎉 All executed tests passed!")
-        sys.exit(0)
-    elif not results: # No tests ran, not a failure but not a success
-        sys.exit(0)
-    else:
-        print("\n⚠️ Some tests failed.")
-        sys.exit(1)
 
 if __name__ == '__main__':
     # Set execute permissions for this script itself, primarily for non-Windows.

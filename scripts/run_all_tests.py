@@ -70,8 +70,6 @@ def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None):
 
         process = subprocess.run(
             cmd_list, cwd=working_dir, capture_output=True, text=True,
-            timeout=timeout_seconds, env=process_env, check=True
-        ) # Changed check=False to check=True
 
         stdout_lines = process.stdout.splitlines()
         stderr_lines = process.stderr.splitlines()
@@ -84,11 +82,6 @@ def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None):
             print("STDERR:")
             for line in stderr_lines:
                 print(line)
-
-        # If check=True is used, CalledProcessError will be raised for non-zero exit codes.
-        # So, if we reach here, the command succeeded.
-        print(f"Command SUCCEEDED with exit code {process.returncode}.")
-        return True
 
     except subprocess.CalledProcessError as e:
         # This block handles non-zero exit codes when check=True
@@ -114,15 +107,6 @@ def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None):
         return False
 
 def main():
-    """
-    Parses command-line arguments and orchestrates the test execution flow.
-
-    This includes:
-    - Running custom test scripts.
-    - Optionally building specified Chromium test targets.
-    - Optionally running specified Chromium test suites with filters.
-    - Summarizing the results.
-    """
     desc = "Test Runner"
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument(
@@ -248,11 +232,6 @@ def main():
                     f"Test executable not found: {executable_path}. "
                     f"Skipping {suite}."
                 )
-                current_filter_str = specific_gtest_filter or "all"
-                key_parts = ['run'] # pylint: disable=C0301
-                key_parts.append(suite)
-                key_parts.append(current_filter_str) # Using a clearly new variable
-                result_key = "_".join(key_parts)
                 results[result_key] = False
                 overall_success = False
                 continue
@@ -271,14 +250,6 @@ def main():
                 test_cmd.append('--no-sandbox')
 
             final_run_cmd = []
-            if args.platform in ['linux', 'darwin'] and suite not in ['unit_tests', 'base_unittests']:
-                # unit_tests usually don't need X display
-                # Check if xvfb-run is available
-                # For this check, we don't want the script to terminate if 'which' fails,
-                # so check=False is appropriate, and we handle the return code.
-                xvfb_check_process = subprocess.run(
-                    ['which', 'xvfb-run'], capture_output=True, text=True,
-                    env=mock_env, check=False
                 )
                 if xvfb_check_process.returncode == 0:
                     final_run_cmd.extend(['xvfb-run', '-a']) # Auto-servernum
@@ -298,11 +269,6 @@ def main():
                 final_run_cmd, working_dir=HENSURF_SRC_DIR,
                 timeout_seconds=args.test_launcher_timeout + 60, env=mock_env
             )
-            current_filter_str = specific_gtest_filter or "all"
-            key_parts = ['run'] # pylint: disable=C0301
-            key_parts.append(suite)
-            key_parts.append(current_filter_str) # Using a clearly new variable
-            result_key = "_".join(key_parts)
             results[result_key] = success
             if not success: overall_success = False
     else:

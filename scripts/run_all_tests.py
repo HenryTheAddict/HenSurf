@@ -52,7 +52,8 @@ def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None):
     Executes a shell command and captures its output.
 
     Args:
-        cmd_list (list[str]): The command and its arguments as a list of strings.
+        cmd_list (list[str]): The command and its arguments as a list of
+            strings.
         working_dir (str, optional): The directory to execute the command in.
             Defaults to the current working directory.
         timeout_seconds (int, optional): Timeout for the command in seconds.
@@ -66,10 +67,11 @@ def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None):
     """
     cmd_str = ' '.join(cmd_list)
     wd_str = working_dir or os.getcwd()
-    print(f"Executing: {cmd_str} in {wd_str}")  # noqa: E501
+    print(f"Executing: {cmd_str} in {wd_str}")
     try:
-        # If env is None, the current environment is inherited, which is usually what we want
-        # unless we need to specifically add mock tools to PATH.
+        # If env is None, the current environment is inherited, which is
+        # usually what we want unless we need to specifically add mock tools
+        # to PATH.
 
         process = subprocess.run(  # nosec B603
             cmd_list,
@@ -78,7 +80,7 @@ def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None):
             text=True,
             check=True,
             timeout=timeout_seconds,
-            env=env or os.environ.copy()  # noqa: E501
+            env=env or os.environ.copy()
         )
         stdout_lines = process.stdout.splitlines() if process.stdout else []
         stderr_lines = process.stderr.splitlines() if process.stderr else []
@@ -91,18 +93,20 @@ def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None):
             print("STDERR:")
             for line in stderr_lines:
                 print(line)
-        # If check=True is used, CalledProcessError will be raised for non-zero exit codes.
-        # The stdout/stderr can be accessed from the exception object.
-        # Explicitly return True on command success (if check=True and no exception)
+        # If check=True is used, CalledProcessError will be raised for
+        # non-zero exit codes. The stdout/stderr can be accessed from the
+        # exception object.
+        # Explicitly return True on command success (if check=True and no
+        # exception)
         return True
 
     except subprocess.CalledProcessError as e:
-        print(f"Command FAILED with exit code {e.returncode}.")  # noqa: E501
+        print(f"Command FAILED with exit code {e.returncode}.")
         # stdout and stderr are attributes of the exception object
-        stdout_from_error = e.stdout.splitlines() if e.stdout else []  # noqa: E501
+        stdout_from_error = e.stdout.splitlines() if e.stdout else []
         stderr_from_error = e.stderr.splitlines() if e.stderr else []
 
-        print("STDOUT (from CalledProcessError):")  # noqa: E501
+        print("STDOUT (from CalledProcessError):")
         for line in stdout_from_error:
             print(line)
         print("STDERR (from CalledProcessError):")
@@ -113,14 +117,15 @@ def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None):
         print(f"Command timed out after {timeout_seconds} seconds.")
         return False
     except FileNotFoundError as e:
-        print(f"Error: Command not found: {cmd_list[0]}. Details: {e}")  # noqa: E501 # pylint: disable=line-too-long
+        print(f"Error: Command not found: {cmd_list[0]}. Details: {e}")  # pylint: disable=line-too-long # noqa: E501
         return False
-    except OSError as e:  # Catching OSError which is a base for many execution errors
-        print(f"Error executing command: {cmd_list[0]}. Details: {e}")  # noqa: E501 # pylint: disable=line-too-long
+    except OSError as e:  # Catching OSError which is a base for many
+        # execution errors
+        print(f"Error executing command: {cmd_list[0]}. Details: {e}")  # pylint: disable=line-too-long # noqa: E501
         return False
     except Exception as e:  # pylint: disable=broad-except
-        print(  # noqa: E501
-            f"An unexpected error occurred while running command: {cmd_list[0]}. Details: {e}") # pylint: disable=line-too-long
+        print(
+            f"An unexpected error occurred while running command: {cmd_list[0]}. Details: {e}")  # pylint: disable=line-too-long # noqa: E501
         return False
 
 
@@ -158,7 +163,7 @@ def _run_custom_tests(args, mock_env):
             success_flag = False
     else:
         print(
-            f"Custom test script not found for {args.platform} at {custom_script_path}")  # noqa: E501 # pylint: disable=line-too-long
+            f"Custom test script not found for {args.platform} at {custom_script_path}")  # pylint: disable=line-too-long # noqa: E501
         current_results['custom_tests'] = False
         success_flag = False
     return success_flag, current_results
@@ -173,13 +178,13 @@ def _build_chromium_suites(args, mock_env):
         print(f"Building: {suite}")
         build_cmd = ['autoninja', '-C', args.output_dir, suite]
         success = run_command(
-            build_cmd, working_dir=HENSURF_SRC_DIR, env=mock_env  # noqa: E501
+            build_cmd, working_dir=HENSURF_SRC_DIR, env=mock_env
         )
         current_results[f'build_{suite}'] = success
         if not success:
             print(f"Stopping early because build of {suite} failed.")
             success_flag = False
-            # Potentially break here if one build failure means we can't proceed
+            # Potentially break here if one build failure means we can't proceed  # noqa: E501
             # For now, it will try all builds and report all failures.
     return success_flag, current_results
 
@@ -202,7 +207,7 @@ def _run_chromium_suites(args, mock_env):
 
         if not os.path.exists(executable_path):
             print(
-                f"Test executable not found: {executable_path}. "  # noqa: E501 # pylint: disable=line-too-long
+                f"Test executable not found: {executable_path}. "  # pylint: disable=line-too-long # noqa: E501
                 f"Skipping {suite}."
             )
             current_results[result_key] = False
@@ -215,7 +220,7 @@ def _run_chromium_suites(args, mock_env):
 
         test_cmd.append('--test-launcher-bot-mode')
         test_cmd.append(
-            f'--test-launcher-timeout={args.test_launcher_timeout * 1000}'  # noqa: E501 # pylint: disable=line-too-long
+            f'--test-launcher-timeout={args.test_launcher_timeout * 1000}'  # pylint: disable=line-too-long # noqa: E501
         )
         if args.no_sandbox:
             test_cmd.append('--no-sandbox')
@@ -225,14 +230,14 @@ def _run_chromium_suites(args, mock_env):
             'browser_tests', 'unit_tests'
         ]:
             xvfb_check_process = subprocess.run(  # nosec B603 B607
-                ['which', 'xvfb-run'], capture_output=True, text=True, check=False  # noqa: E501 # pylint: disable=line-too-long
+                ['which', 'xvfb-run'], capture_output=True, text=True, check=False  # pylint: disable=line-too-long # noqa: E501
             )
             if xvfb_check_process.returncode == 0:
                 final_run_cmd.extend(['xvfb-run', '-a'])
                 final_run_cmd.extend(test_cmd)
             else:
                 print(
-                    "xvfb-run not found, attempting to run test without it. "  # noqa: E501 # pylint: disable=line-too-long
+                    "xvfb-run not found, attempting to run test without it. "  # pylint: disable=line-too-long # noqa: E501
                     "May fail if UI is needed."
                 )
                 final_run_cmd.extend(test_cmd)
@@ -270,12 +275,8 @@ def _summarize_and_exit(results, overall_success):
         sys.exit(1)
 
 
-def main():
-    """
-    Main function to parse arguments and run tests.
-    Orchestrates the test execution process based on command-line arguments.
-    """
-    desc = "Test Runner"
+def _parse_arguments():
+    """Parses command-line arguments."""
     desc = """Comprehensive Test Runner for HenSurf Browser.
     This script can execute custom test scripts (shell/powershell)
     and specific Chromium test suites like browser_tests and unit_tests.
@@ -302,17 +303,17 @@ def main():
     )
     parser.add_argument(
         '--build-chromium-tests', nargs='*', metavar='TARGET',
-        help="List of Chromium test suites/targets to build "  # noqa: E501 # pylint: disable=line-too-long
+        help="List of Chromium test suites/targets to build "  # pylint: disable=line-too-long # noqa: E501
              "(e.g., browser_tests unit_tests)"
     )
     parser.add_argument(
         '--run-chromium-tests', nargs='*', metavar='SUITE[:FILTER]',
-        help="List of Chromium test suites to run, with optional gtest_filter "  # noqa: E501 # pylint: disable=line-too-long
+        help="List of Chromium test suites to run, with optional gtest_filter "  # pylint: disable=line-too-long # noqa: E501
              "(e.g., browser_tests:BrowserTest.Sanity)"
     )
     parser.add_argument(
         '--gtest_filter',
-        help="Global gtest_filter for all --run-chromium-tests suites "  # noqa: E501 # pylint: disable=line-too-long
+        help="Global gtest_filter for all --run-chromium-tests suites "  # pylint: disable=line-too-long # noqa: E501
              "if not specified per suite"
     )
     parser.add_argument(
@@ -327,33 +328,34 @@ def main():
         '--list-tests', action='store_true',
         help="Print a list of known test targets/suites and exit."
     )
+    return parser.parse_args()
 
-    args = parser.parse_args()
 
-    if args.list_tests:
-        print("Known test targets/suites for --build-chromium-tests and --run-chromium-tests:")
-        print("  - custom_scripts (handled by --skip-custom-scripts flag instead of these options)")
-        print("  - browser_tests")
-        print("  - unit_tests")
-        print("  - interactive_ui_tests")
-        print("  - components_unittests")
-        print("  - services_unittests")
-        print("  - content_unittests")
-        print("  - media_unittests")
-        print("  - views_unittests")
-        print("  - extensions_unittests")
-        print("  - (and many others available in a full Chromium checkout)")
-        print("\nUse specific suite names with --build-chromium-tests or --run-chromium-tests.")
-        print("For --run-chromium-tests, you can also specify a filter, e.g., browser_tests:BrowserTest.Sanity")
-        sys.exit(0)
+def _print_known_tests_and_exit():
+    """Prints known test targets and exits."""
+    print("Known test targets/suites for --build-chromium-tests and "
+          "--run-chromium-tests:")
+    print("  - custom_scripts (handled by --skip-custom-scripts flag "
+          "instead of these options)")
+    print("  - browser_tests")
+    print("  - unit_tests")
+    print("  - interactive_ui_tests")
+    print("  - components_unittests")
+    print("  - services_unittests")
+    print("  - content_unittests")
+    print("  - media_unittests")
+    print("  - views_unittests")
+    print("  - extensions_unittests")
+    print("  - (and many others available in a full Chromium checkout)")
+    print("\nUse specific suite names with --build-chromium-tests or "
+          "--run-chromium-tests.")
+    print("For --run-chromium-tests, you can also specify a filter, "
+          "e.g., browser_tests:BrowserTest.Sanity")  # pylint: disable=line-too-long # noqa: E501
+    sys.exit(0)
 
-    print(f"Running tests for platform: {args.platform}")
-    print(f"Output directory: {args.output_dir}")
 
-    # Get environment with mock tools in PATH (important for autoninja)
-    mock_env = get_env_with_mock_tools()
-    print(f"Using PATH: {mock_env.get('PATH')}")
-
+def _execute_test_plan(args, mock_env):
+    """Executes the test plan based on parsed arguments."""
     results = {}
     overall_success = True
 
@@ -379,14 +381,14 @@ def main():
 
     # 3. Run Chromium Test Suites (Optional)
     # Only proceed if builds were successful or not attempted
-    if args.run_chromium_tests and (not args.build_chromium_tests or overall_success):  # noqa: E501 # pylint: disable=line-too-long
+    if args.run_chromium_tests and (not args.build_chromium_tests or overall_success):  # pylint: disable=line-too-long # noqa: E501
         run_success, run_results = _run_chromium_suites(args, mock_env)
         results.update(run_results)
         if not run_success:
             overall_success = False
-    elif args.run_chromium_tests and args.build_chromium_tests and not overall_success:  # noqa: E501 # pylint: disable=line-too-long
+    elif args.run_chromium_tests and args.build_chromium_tests and not overall_success:  # pylint: disable=line-too-long # noqa: E501
         print(
-            "\n--- Skipping Run of Chromium Test Suites due to previous build failures ---")  # noqa: E501 # pylint: disable=line-too-long
+            "\n--- Skipping Run of Chromium Test Suites due to previous build failures ---")  # pylint: disable=line-too-long # noqa: E501
     else:
         print("\n--- Skipping Run of Chromium Test Suites ---")
 
@@ -394,8 +396,29 @@ def main():
     _summarize_and_exit(results, overall_success)
 
 
+def main():
+    """
+    Main function to parse arguments and run tests.
+    Orchestrates the test execution process based on command-line arguments.
+    """
+    args = _parse_arguments()
+
+    if args.list_tests:
+        _print_known_tests_and_exit()
+
+    print(f"Running tests for platform: {args.platform}")
+    print(f"Output directory: {args.output_dir}")
+
+    # Get environment with mock tools in PATH (important for autoninja)
+    mock_env = get_env_with_mock_tools()
+    print(f"Using PATH: {mock_env.get('PATH')}")
+
+    _execute_test_plan(args, mock_env)
+
+
 if __name__ == '__main__':
-    # Set execute permissions for this script itself, primarily for non-Windows.
+    # Set execute permissions for this script itself, primarily for
+    # non-Windows.
     try:
         current_script_path = os.path.abspath(__file__)
         if platform.system() != "Windows":

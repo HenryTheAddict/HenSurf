@@ -1,3 +1,11 @@
+"""
+Runs various tests for the HenSurf project.
+
+This script can execute custom test scripts (shell/powershell) and specific
+Chromium test suites like browser_tests and unit_tests. It provides options
+to specify the platform, output directory, and test filters.
+It also includes mockups for certain tools if run in a sandboxed environment.
+"""
 import os
 import platform
 import subprocess
@@ -21,7 +29,13 @@ HENSURF_OUT_DIR_DEFAULT = os.path.join(
 MOCK_TOOLS_DIR = os.path.join(PROJECT_ROOT, 'tmp_mocks')
 
 def get_env_with_mock_tools():
-    """Returns a modified environment dictionary with mock tools in PATH."""
+    """
+    Returns a modified environment dictionary with mock tools in PATH.
+
+    This is used to ensure that scripts like autoninja can find their
+    dependencies (like a mock gclient) when running in a controlled
+    or sandboxed environment.
+    """
     env = os.environ.copy()
     current_path = env.get('PATH', '')
     env['PATH'] = MOCK_TOOLS_DIR + os.pathsep + current_path
@@ -31,7 +45,23 @@ def get_env_with_mock_tools():
     env['PATH'] = depot_tools_mock_dir + os.pathsep + env['PATH']
     return env
 
-def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None, check_exit_code=True):
+def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None):
+    """
+    Executes a shell command and captures its output.
+
+    Args:
+        cmd_list (list[str]): The command and its arguments as a list of strings.
+        working_dir (str, optional): The directory to execute the command in.
+            Defaults to the current working directory.
+        timeout_seconds (int, optional): Timeout for the command in seconds.
+            Defaults to 300.
+        env (dict, optional): Environment variables to use for the command.
+            Defaults to the current process environment.
+
+    Returns:
+        bool: True if the command executed successfully, False otherwise
+              (e.g., non-zero exit, timeout, or other execution error).
+    """
     print(f"Executing: {' '.join(cmd_list)} in {working_dir or os.getcwd()}")
     try:
         # If env is None, the current environment is inherited, which is usually what we want
@@ -40,8 +70,6 @@ def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None, check
 
         process = subprocess.run(
             cmd_list, cwd=working_dir, capture_output=True, text=True,
-            timeout=timeout_seconds, env=process_env, check=False
-        ) # check=False to handle manually
 
         stdout_lines = process.stdout.splitlines()
         stderr_lines = process.stderr.splitlines()
@@ -55,37 +83,27 @@ def run_command(cmd_list, working_dir=None, timeout_seconds=300, env=None, check
             for line in stderr_lines:
                 print(line)
 
-        if check_exit_code and process.returncode != 0:
-            print(f"Command FAILED with exit code {process.returncode}.")
-            return False
-        else:
-            # If not checking exit code, or if exit code is 0,
-            # consider it a logical success for this function
-            print(f"Command finished with exit code {process.returncode}.")
-            return True # For build steps, even a non-zero might be okay
-                       # if we want to see test results but for tests
-                       # themselves, non-zero is a failure. The caller
-                       # should decide. For now, this function just
-                       # reports execution.
-                       # Let's refine: True if returncode is 0, False
-                       # otherwise if check_exit_code is True.
-                       # If check_exit_code is False, always return True
-                       # (command ran).
-            # Refined logic:
-            if check_exit_code:
-                if process.returncode == 0:
-                    print("Command SUCCEEDED.")
-                    return True
-                else:
-                    # print(f"Command FAILED with exit code {process.returncode}.") # Already printed
-                    return False
-            return True # Command ran, ignore exit code
-
+    except subprocess.CalledProcessError as e:
+        # This block handles non-zero exit codes when check=True
+        print(f"Command FAILED with exit code {e.returncode}.")
+        print("STDOUT (from CalledProcessError):")
+        for line in e.stdout.splitlines(): # stdout may be bytes, decode if necessary
+            print(line)
+        print("STDERR (from CalledProcessError):")
+        for line in e.stderr.splitlines(): # stderr may be bytes, decode if necessary
+            print(line)
+        return False # Explicitly return False on command failure
     except subprocess.TimeoutExpired:
         print(f"Command timed out after {timeout_seconds} seconds.")
         return False
-    except Exception as e:
-        print(f"Error running command: {e}")
+    except FileNotFoundError as e:
+        print(f"Error: Command not found: {cmd_list[0]}. Details: {e}")
+        return False
+    except OSError as e:
+        print(f"Error executing command: {cmd_list[0]}. Details: {e}")
+        return False
+    except Exception as e: # General fallback
+        print(f"An unexpected error occurred while running command: {cmd_list[0]}. Details: {e}")
         return False
 
 def main():
@@ -148,7 +166,7 @@ def main():
         # Scripts are in PROJECT_ROOT/scripts/
         script_dir = os.path.join(PROJECT_ROOT, 'scripts')
 
-        if args.platform == 'linux' or args.platform == 'darwin':
+        if args.platform in ['linux', 'darwin']:
             custom_script_path = os.path.join(script_dir, 'test-hensurf.sh')
             # Ensure it's executable - this might fail in sandbox if not already set
             try:
@@ -214,8 +232,6 @@ def main():
                     f"Test executable not found: {executable_path}. "
                     f"Skipping {suite}."
                 )
-                filter_str = specific_gtest_filter or "all"
-                result_key = "_".join(['run', suite, filter_str])
                 results[result_key] = False
                 overall_success = False
                 continue
@@ -234,12 +250,6 @@ def main():
                 test_cmd.append('--no-sandbox')
 
             final_run_cmd = []
-            if args.platform == 'linux' and suite not in ['unit_tests', 'base_unittests']:
-                # unit_tests usually don't need X display
-                # Check if xvfb-run is available
-                xvfb_check_process = subprocess.run(
-                    ['which', 'xvfb-run'], capture_output=True, text=True,
-                    env=mock_env
                 )
                 if xvfb_check_process.returncode == 0:
                     final_run_cmd.extend(['xvfb-run', '-a']) # Auto-servernum
@@ -259,8 +269,6 @@ def main():
                 final_run_cmd, working_dir=HENSURF_SRC_DIR,
                 timeout_seconds=args.test_launcher_timeout + 60, env=mock_env
             )
-            filter_str = specific_gtest_filter or "all"
-            result_key = "_".join(['run', suite, filter_str])
             results[result_key] = success
             if not success: overall_success = False
     else:

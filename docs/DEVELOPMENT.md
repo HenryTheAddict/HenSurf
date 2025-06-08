@@ -450,3 +450,21 @@ autoninja -C chromium/src/out/HenSurf chrome/installer/mac
 - GitHub Issues for bug reports
 - Discussions for feature requests
 - Wiki for additional documentation
+
+## Fast Developer Builds
+
+The `scripts/build.sh` script includes a `--dev-fast` flag to enable a developer-focused build mode that can significantly speed up local build times, especially for incremental changes.
+
+To use it, run:
+```bash
+./scripts/build.sh --dev-fast
+```
+
+This flag sets the following GN arguments:
+- `is_component_build = true`: Builds Chromium modules as separate shared libraries. This dramatically speeds up link times for incremental builds as only modified components need to be relinked.
+- `treat_warnings_as_errors = false`: Allows the build to continue even if new warnings are encountered. This can be useful during active development to avoid getting blocked by minor warnings.
+
+**Important Considerations:**
+- Builds created with `--dev-fast` are **not suitable for distribution or release**. They are intended for local development and testing only.
+- Component builds may have a slight runtime performance overhead compared to monolithic builds.
+- While `treat_warnings_as_errors = false` can speed up iteration, it's recommended to address warnings before finalizing changes or submitting them for CI/release builds.

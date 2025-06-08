@@ -219,6 +219,7 @@ fi
 HENSURF_ENABLE_BLOATWARE=0 # Default to disabled
 BUILD_CHROMEDRIVER=true
 BUILD_MINI_INSTALLER=true
+DEV_FAST_MODE=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -228,11 +229,17 @@ while [[ $# -gt 0 ]]; do
         --no-enable-bloatware) HENSURF_ENABLE_BLOATWARE=0; shift ;;
         --skip-chromedriver) BUILD_CHROMEDRIVER=false; shift ;;
         --skip-mini-installer) BUILD_MINI_INSTALLER=false; shift ;;
+        --dev-fast) DEV_FAST_MODE=true; shift ;;
         *) shift ;; # unknown option
     esac
 done
 
 GN_ARGS_LIST=()
+if [ "$DEV_FAST_MODE" = true ]; then
+    log_info "🚀 Developer Fast Mode enabled: is_component_build=true, treat_warnings_as_errors=false" | tee -a "$BUILD_LOG_FILE"
+    GN_ARGS_LIST+=("is_component_build=true")
+    GN_ARGS_LIST+=("treat_warnings_as_errors=false")
+fi
 if [[ -n "$GN_ARGS_EXTRA_OS" ]]; then
     GN_ARGS_LIST+=("$GN_ARGS_EXTRA_OS")
 fi
@@ -294,6 +301,11 @@ log_info "Ninja will now show detailed build progress (e.g., [X/Y] files compile
 autoninja -C out/HenSurf chrome 2>&1 | tee -a "$BUILD_LOG_FILE"
 CHROME_BUILD_STATUS=${PIPESTATUS[0]}
 log_info "[$(date '+%Y-%m-%d %H:%M:%S')] Finished main browser build." | tee -a "$BUILD_LOG_FILE"
+
+if command_exists "ccache"; then
+    log_info "Final ccache statistics after main browser build:" | tee -a "$BUILD_LOG_FILE"
+    ccache -s 2>&1 | tee -a "$BUILD_LOG_FILE"
+fi
 
 if [ $CHROME_BUILD_STATUS -ne 0 ]; then
     log_error "❌ Build failed for chrome target. Check $BUILD_LOG_FILE for details." | tee -a "$BUILD_LOG_FILE"

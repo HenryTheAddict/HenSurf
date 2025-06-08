@@ -161,6 +161,14 @@ case "$OS_TYPE" in
         log_info "   If you have issues, ensure VS is correctly installed and discoverable by depot_tools."
         log_info "   Press [Enter] to acknowledge and continue."
         read -r
+
+        log_info ""
+        log_info "💡 Build Caching on Windows:"
+        log_info "   For improved build times, consider using Mozilla's 'sccache' (https://github.com/mozilla/sccache)."
+        log_info "   It can replace cl.exe and cache compilation results, similar to ccache on Linux/macOS."
+        log_info "   Alternatively, investigate build caching features within Visual Studio itself."
+        log_info "   Note: The ccache configurations in build.sh are primarily for Linux/macOS environments."
+        log_info ""
         ;;
 
     "linux")
@@ -169,7 +177,7 @@ case "$OS_TYPE" in
             log_info "Distro: Debian/Ubuntu (apt package manager found)"
             log_info "📦 Installing dependencies for Debian/Ubuntu..."
             sudo apt-get update
-            if ! sudo apt-get install -y python3 git ninja-build pkg-config build-essential libgtk-3-dev libnss3-dev libasound2-dev libcups2-dev libxtst-dev libxss1 libatk1.0-dev libatk-bridge2.0-dev libdrm-dev libgbm-dev libx11-xcb-dev uuid-dev; then
+            if ! sudo apt-get install -y python3 git ninja-build pkg-config build-essential libgtk-3-dev libnss3-dev libasound2-dev libcups2-dev libxtst-dev libxss1 libatk1.0-dev libatk-bridge2.0-dev libdrm-dev libgbm-dev libx11-xcb-dev uuid-dev ccache; then
                 log_error "Failed to install dependencies via apt-get. Please check the output."
                 exit 1
             fi
@@ -177,7 +185,7 @@ case "$OS_TYPE" in
         elif command_exists "dnf"; then
             log_info "Distro: Fedora (dnf package manager found)"
             log_info "📦 Installing dependencies for Fedora..."
-            if ! sudo dnf install -y python3 git ninja-build pkgconf-pkg-config gcc-c++ gtk3-devel nss-devel alsa-lib-devel cups-devel libXtst-devel libXScrnSaver-devel atk-devel at-spi2-atk-devel libdrm-devel libgbm-devel libX11-xcb-devel libuuid-devel; then
+            if ! sudo dnf install -y python3 git ninja-build pkgconf-pkg-config gcc-c++ gtk3-devel nss-devel alsa-lib-devel cups-devel libXtst-devel libXScrnSaver-devel atk-devel at-spi2-atk-devel libdrm-devel libgbm-devel libX11-xcb-devel libuuid-devel ccache; then
                 log_error "Failed to install dependencies via dnf. Please check the output."
                 exit 1
             fi
@@ -185,7 +193,7 @@ case "$OS_TYPE" in
         elif command_exists "pacman"; then
             log_info "Distro: Arch Linux (pacman package manager found)"
             log_info "📦 Installing dependencies for Arch Linux..."
-            if ! sudo pacman -Syu --noconfirm --needed base-devel python git ninja pkgconf gtk3 nss alsa-lib cups libxtst libxscrnsaver libatk at-spi2-atk libdrm libgbm libx11 libxcb util-linux; then
+            if ! sudo pacman -Syu --noconfirm --needed base-devel python git ninja pkgconf gtk3 nss alsa-lib cups libxtst libxscrnsaver libatk at-spi2-atk libdrm libgbm libx11 libxcb util-linux ccache; then
                 log_error "Failed to install dependencies via pacman. Please check the output."
                 exit 1
             fi

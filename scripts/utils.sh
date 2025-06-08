@@ -221,29 +221,58 @@ check_python_version() {
 
 # --- Depot Tools Utilities ---
 
-# Function to get the expected depot_tools directory path.
-# It assumes depot_tools is typically cloned adjacent to the project's root directory.
+# Function to find the depot_tools directory.
+# Checks DEPOT_TOOLS_PATH env var, then common locations relative to project_root.
 #
 # Arguments:
 #   $1: project_root_path - The absolute or relative path to the project's root directory.
 #
 # Outputs:
-#   Prints the calculated depot_tools directory path to stdout.
-#   Returns 0 on success, 1 on error (e.g., if project_root_path is not provided).
-get_depot_tools_dir() {
+#   Prints the absolute path to depot_tools to stdout if found.
+#   Returns 0 on success, 1 on error.
+find_depot_tools_path() {
     local project_root="$1"
+    local depot_tools_path_to_check
+
     if [ -z "$project_root" ]; then
-        log_error "Project root path not provided to get_depot_tools_dir."
+        log_error "Project root path not provided to find_depot_tools_path."
         return 1
     fi
-    local parent_of_project_root
-    parent_of_project_root=$(cd "$project_root/.." &>/dev/null && pwd)
-    if [ -z "$parent_of_project_root" ]; then
-        log_error "Could not determine parent directory of project root '$project_root'."
-        return 1
+
+    # 1. Check DEPOT_TOOLS_PATH environment variable
+    if [ -n "$DEPOT_TOOLS_PATH" ]; then
+        if [ -d "$DEPOT_TOOLS_PATH" ]; then
+            log_info "Using depot_tools from DEPOT_TOOLS_PATH: $DEPOT_TOOLS_PATH"
+            echo "$DEPOT_TOOLS_PATH" # Output absolute path
+            return 0
+        else
+            log_error "DEPOT_TOOLS_PATH environment variable is set to '$DEPOT_TOOLS_PATH', but it's not a valid directory."
+            # Continue to check other locations, but return 1 if nothing else is found
+        fi
     fi
-    echo "$parent_of_project_root/depot_tools"
-    return 0
+
+    # 2. Check at $project_root/../depot_tools
+    depot_tools_path_to_check=$(cd "$project_root/.." && pwd)/depot_tools
+    if [ -d "$depot_tools_path_to_check" ]; then
+        log_info "Found depot_tools at: $depot_tools_path_to_check"
+        echo "$depot_tools_path_to_check"
+        return 0
+    fi
+
+    # 3. Check at $project_root/depot_tools
+    depot_tools_path_to_check=$(cd "$project_root" && pwd)/depot_tools
+     if [ -d "$depot_tools_path_to_check" ]; then
+        log_info "Found depot_tools at: $depot_tools_path_to_check"
+        echo "$depot_tools_path_to_check"
+        return 0
+    fi
+
+    log_error "depot_tools not found. Checked:"
+    log_error "  - DEPOT_TOOLS_PATH environment variable (if set)"
+    log_error "  - $project_root/../depot_tools"
+    log_error "  - $project_root/depot_tools"
+    log_error "Please ensure depot_tools is installed and accessible, or set DEPOT_TOOLS_PATH."
+    return 1
 }
 
 # Function to add depot_tools to PATH.

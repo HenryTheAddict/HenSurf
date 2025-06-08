@@ -422,13 +422,30 @@ main() {
 
     # Depot Tools Setup
     local DEPOT_TOOLS_DIR
-    DEPOT_TOOLS_DIR=$(get_depot_tools_dir "$PROJECT_ROOT")
-    if [ -z "$DEPOT_TOOLS_DIR" ]; then
-        log_error "Failed to determine depot_tools directory path. Exiting." | tee -a "$BUILD_LOG_FILE"; exit 1;
+    if ! DEPOT_TOOLS_DIR=$(find_depot_tools_path "$PROJECT_ROOT"); then
+        # Error messages are handled by find_depot_tools_path
+        log_error "   Build script cannot proceed without depot_tools." | tee -a "$BUILD_LOG_FILE"
+        exit 1
     fi
+    # add_depot_tools_to_path also logs success/failure and the path being added
     if ! add_depot_tools_to_path "$DEPOT_TOOLS_DIR"; then
-        log_error "Failed to add depot_tools to PATH. Exiting." | tee -a "$BUILD_LOG_FILE"; exit 1;
+        # Error message already logged by add_depot_tools_to_path
+        log_error "Failed to add depot_tools to PATH. Exiting." | tee -a "$BUILD_LOG_FILE"
+        exit 1
     fi
+
+    # Check for essential commands from depot_tools
+    if ! command_exists "gn"; then
+        log_error "Critical: 'gn' command not found. 'gn' is required to configure the build." | tee -a "$BUILD_LOG_FILE"
+        log_error "Ensure depot_tools is correctly installed and in PATH." | tee -a "$BUILD_LOG_FILE"
+        exit 1
+    fi
+    if ! command_exists "autoninja"; then
+        log_error "Critical: 'autoninja' command not found. 'autoninja' is required to build the project." | tee -a "$BUILD_LOG_FILE"
+        log_error "Ensure depot_tools is correctly installed and in PATH." | tee -a "$BUILD_LOG_FILE"
+        exit 1
+    fi
+    log_success "✅ 'gn' and 'autoninja' commands found." | tee -a "$BUILD_LOG_FILE"
 
     # Configure ccache
     export CCACHE_CPP2=true

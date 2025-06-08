@@ -1,0 +1,8 @@
+#!/bin/bash
+echo "Mock df: Called with $*" >> /tmp/df_calls.log
+if [[ "$*" == "-BG ." ]]; then
+  echo "Filesystem Size Used Avail Capacity Mounted on" # Header
+  echo "tmpfs      100G  10G  90G      10% /app"      # Mocked line for current dir
+else
+  /bin/df "$@"
+fi

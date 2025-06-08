@@ -1,0 +1,22 @@
+#!/bin/bash
+echo "Mock brew: Called with $*" >> /tmp/brew_calls.log
+if [[ "$1" == "install" ]]; then
+  echo "Mock brew: Simulating brew install of packages: ${*:2}" >> /tmp/brew_calls.log
+  # Simulate creating a ccache command if it's installed
+  if [[ " ${*:2} " == *" ccache "* ]]; then
+    echo "Mock brew: ccache was in the list, creating mock ccache command." >> /tmp/brew_calls.log
+    cat <<'CCACHE_EOF' > /app/tmp_mocks/ccache
+#!/bin/bash
+echo "Mock ccache: Called with $*" >> /tmp/ccache_calls.log
+# Potentially simulate ccache behavior, e.g., if -M is called
+if [[ "$1" == "-M" ]]; then
+  echo "Mock ccache: Max size set to $2" >> /tmp/ccache_calls.log
+fi
+CCACHE_EOF
+    chmod +x /app/tmp_mocks/ccache
+  fi
+elif [[ "$1" == "update" ]]; then
+  echo "Mock brew: Simulating brew update" >> /tmp/brew_calls.log
+else
+  echo "Mock brew: Unhandled command $1" >> /tmp/brew_calls.log
+fi

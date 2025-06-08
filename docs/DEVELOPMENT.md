@@ -42,9 +42,11 @@ This guide covers development workflows, debugging, and contribution guidelines 
 ### Prerequisites
 
 - **macOS 10.15+** (Catalina or later)
-- **Xcode Command Line Tools**
+  - Ensure the Xcode license is accepted (run `sudo xcodebuild -license accept` if prompted by `install-deps.sh` or if builds fail with license errors).
+  - For better build performance, consider excluding your HenSurf project directory from Spotlight indexing (System Settings -> Siri & Spotlight -> Spotlight Privacy...). `install-deps.sh` will remind you of this.
+- **Xcode Command Line Tools**: `install-deps.sh` will help install these if missing.
 - **16GB+ RAM** (32GB recommended)
-- **100GB+ free disk space**
+- **100GB+ free disk space** (more might be needed for ccache and multiple builds)
 - **Fast internet connection** (for initial source download)
 
 ### Quick Setup
@@ -64,6 +66,8 @@ This guide assumes you have already cloned the HenSurf repository and are in its
 # Build HenSurf (takes 2-8 hours)
 ./scripts/build.sh
 ```
+
+**Note for macOS users**: The `install-deps.sh` script will install necessary dependencies using Homebrew (including `ccache` for faster builds) and guide you through Xcode Command Line Tools setup. The `build.sh` script automatically detects your Mac's architecture (Intel x64 or Apple Silicon arm64) to configure the build correctly.
 
 ## Development Workflow
 
@@ -281,7 +285,11 @@ export NINJA_PARALLEL_JOBS=$(sysctl -n hw.ncpu)
 echo 'use_jumbo_build = true' >> out/HenSurf/args.gn
 
 # Enable ccache
-echo 'cc_wrapper = "ccache"' >> out/HenSurf/args.gn
+# On macOS, ccache is installed by ./scripts/install-deps.sh.
+# On Linux, ensure ccache is installed separately.
+# To enable ccache for your build, add the following to your out/HenSurf/args.gn (or other build directory's args.gn):
+#   cc_wrapper = "ccache"
+# Then, ensure your ccache is configured (e.g., run `ccache -M 50G` to set max size).
 ```
 
 #### Incremental Builds

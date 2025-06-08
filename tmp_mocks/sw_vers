@@ -1,0 +1,9 @@
+#!/bin/bash
+echo "Mock sw_vers: Called with $*" >> /tmp/sw_vers_calls.log
+if [[ "$*" == "-productVersion" ]]; then
+  echo "12.4"
+elif [[ "$*" == "-buildVersion" ]]; then
+  echo "21F79"
+else
+  echo "Mock sw_vers: unhandled args $*"
+fi

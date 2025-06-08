@@ -1,0 +1,7 @@
+#include "chrome/app/chrome_version.rc.version"
+
+#define PRODUCT_FULLNAME_STRING "HenSurf Browser"
+#define PRODUCT_SHORTNAME_STRING "HenSurf"
+#define COMPANY_FULLNAME_STRING "HenSurf"
+#define COMPANY_SHORTNAME_STRING "HenSurf"
+#define COPYRIGHT_STRING "Copyright 2025 HenSurf. All rights reserved."

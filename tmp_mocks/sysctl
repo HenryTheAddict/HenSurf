@@ -1,0 +1,9 @@
+#!/bin/bash
+echo "Mock sysctl: Called with $*" >> /tmp/sysctl_calls.log
+if [[ "$*" == "-n hw.ncpu" ]]; then
+  echo "8"
+elif [[ "$*" == "-n hw.memsize" ]]; then
+  echo "17179869184" # 16GB
+else
+  echo "Mock sysctl: unhandled args $*"
+fi

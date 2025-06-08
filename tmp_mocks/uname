@@ -1,0 +1,7 @@
+#!/bin/bash
+echo "Mock uname: Called with $*" >> /tmp/uname_calls.log
+if [[ "$*" == "-m" ]]; then
+  echo "arm64" # Simulate Apple Silicon for this run
+else
+  /usr/bin/uname "$@" # Fallback for other uname calls if any
+fi

@@ -1,0 +1,7 @@
+#!/bin/bash
+echo "Mock gclient: Called with $*" >> /tmp/gclient_calls.log
+if [[ "$1" == "runhooks" ]]; then
+  echo "Mock gclient: Simulating runhooks" >> /tmp/gclient_calls.log
+else
+  echo "Mock gclient: Unhandled command $1" >> /tmp/gclient_calls.log
+fi

@@ -1,0 +1,25 @@
+#!/bin/bash
+echo "Mock iconutil: Called with $*" >> /tmp/iconutil_calls.log
+output_file=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      output_file="$2"
+      shift # past argument
+      shift # past value
+      ;;
+    *)
+      shift # past argument
+      ;;
+  esac
+done
+
+if [[ -n "$output_file" ]]; then
+  echo "Mock iconutil: Creating dummy icon file $output_file" >> /tmp/iconutil_calls.log
+  # Ensure parent directory of the output file exists
+  mkdir -p "$(dirname "$output_file")"
+  touch "$output_file"
+else
+  echo "Mock iconutil: -o parameter and value not found or correctly parsed. Output file not created." >> /tmp/iconutil_calls.log
+  echo "Mock iconutil: Received args: $*" >> /tmp/iconutil_calls.log # Log what it received for debugging
+fi

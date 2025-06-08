@@ -1,0 +1,6 @@
+#!/bin/bash
+echo "Mock ccache: Called with $*" >> /tmp/ccache_calls.log
+# Potentially simulate ccache behavior, e.g., if -M is called
+if [[ "$1" == "-M" ]]; then
+  echo "Mock ccache: Max size set to $2" >> /tmp/ccache_calls.log
+fi
